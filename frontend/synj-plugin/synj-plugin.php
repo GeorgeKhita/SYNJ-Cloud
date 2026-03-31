@@ -4,7 +4,7 @@
  * Plugin URI: https://synj.fr
  * Description: Plugin custom SYNJ
  * Version: 1.0.0
- * Author: George Khitaridze & Mohamed Amine
+ * Author: George Khitaridze & Mohamed Amine Delhem
  */
 
 if (!defined('ABSPATH')) exit;
@@ -169,6 +169,39 @@ function synj_charger_scripts() {
     }
 }
 add_action('wp_enqueue_scripts', 'synj_charger_scripts');
+
+// Étape 2 — Sauvegarder la config au moment de l'ajout au panier
+function synj_sauvegarder_config($cart_item_data, $product_id) {
+    if (isset($_POST['synj_ram']))      $cart_item_data['synj_ram']      = floatval($_POST['synj_ram']);
+    if (isset($_POST['synj_cpu']))      $cart_item_data['synj_cpu']      = floatval($_POST['synj_cpu']);
+    if (isset($_POST['synj_stockage'])) $cart_item_data['synj_stockage'] = floatval($_POST['synj_stockage']);
+    if (isset($_POST['synj_prix']))     $cart_item_data['synj_prix']     = floatval($_POST['synj_prix']);
+    return $cart_item_data;
+}
+add_filter('woocommerce_add_cart_item_data', 'synj_sauvegarder_config', 10, 2);
+
+// Appliquer le bon prix dans le panier
+function synj_appliquer_prix($cart) {
+    if (is_admin() && !defined('DOING_AJAX')) return;
+    foreach ($cart->get_cart() as $item) {
+        if (isset($item['synj_prix']) && $item['synj_prix'] > 0) {
+            $item['data']->set_price($item['synj_prix']);
+        }
+    }
+}
+add_action('woocommerce_before_calculate_totals', 'synj_appliquer_prix', 10, 1);
+
+// Afficher les specs dans le récapitulatif panier
+function synj_afficher_specs_panier($item_data, $cart_item) {
+    if (isset($cart_item['synj_ram']) && $cart_item['synj_ram'] > 0)
+        $item_data[] = ['name' => 'RAM', 'value' => $cart_item['synj_ram'] . ' Go'];
+    if (isset($cart_item['synj_cpu']) && $cart_item['synj_cpu'] > 0)
+        $item_data[] = ['name' => 'CPU', 'value' => $cart_item['synj_cpu'] . ' cœur(s)'];
+    if (isset($cart_item['synj_stockage']) && $cart_item['synj_stockage'] > 0)
+        $item_data[] = ['name' => 'Stockage', 'value' => $cart_item['synj_stockage'] . ' Go'];
+    return $item_data;
+}
+add_filter('woocommerce_get_item_data', 'synj_afficher_specs_panier', 10, 2);
 
 
 add_shortcode('synj_disponibilites', 'synj_disponibilites_shortcode');

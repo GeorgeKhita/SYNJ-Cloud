@@ -4,16 +4,15 @@ const SYNJ_PROXY = '/wp-json/synj/v1';
 
 // Config par produit
 const SYNJ_PRODUITS = {
-    'serveur-vpn':           { base: 8,  label: 'VPN',       ram: true, cpu: false, stockage: false },
+    'serveur-vpn':           { base: 8,  label: 'VPN',       ram: true, cpu: true, stockage: false },
     'vps-linux':             { base: 12, label: 'VPS Linux',  ram: true, cpu: true,  stockage: false },
-    'serveur-nas-personnel': { base: 28, label: 'NAS',        ram: true, cpu: false, stockage: true  },
+    'serveur-nas-personnel': { base: 28, label: 'NAS',        ram: true, cpu: true, stockage: true  },
 };
 
 // Paliers (temporaires pour test avec petit Proxmox)
-const PALIERS_RAM      = [0.05, 0.1, 0.2];
-const PALIERS_CPU      = [1, 2, 4];
-const PALIERS_STOCKAGE = [1, 2, 3, 5];
-
+const PALIERS_RAM      = [1, 2, 4, 8, 16];
+const PALIERS_CPU      = [1, 2, 4, 8];
+const PALIERS_STOCKAGE = [20, 40, 60, 100, 200];
 // Prix add-ons
 const PRIX_RAM      = 3;   // €/Go
 const PRIX_CPU      = 3;   // €/cœur
@@ -140,8 +139,50 @@ async function synj_initProduit() {
         zone.appendChild(creerSelect('synj-stockage', 'Stockage supplémentaire', paliersStockageDispo, 'Go', recalculer));
     }
 
+    setupPanier(config);
+
     // Prix de base au chargement
     afficherPrix(config.base.toFixed(2), config);
+}
+
+function injecterChampsCache(config, ram, cpu, stk, prix) {
+    // Supprimer les anciens champs s'ils existent
+    ['synj_ram', 'synj_cpu', 'synj_stockage', 'synj_prix'].forEach(id => {
+        const old = document.getElementById(id);
+        if (old) old.remove();
+    });
+
+    const form = document.querySelector('form.cart');
+    if (!form) return;
+
+    const champs = [
+        { name: 'synj_ram', value: ram },
+        { name: 'synj_cpu', value: cpu },
+        { name: 'synj_stockage', value: stk },
+        { name: 'synj_prix', value: prix },
+    ];
+
+    champs.forEach(({ name, value }) => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.id = name;
+        input.name = name;
+        input.value = value;
+        form.appendChild(input);
+    });
+}
+
+function setupPanier(config) {
+    const form = document.querySelector('form.cart');
+    if (!form) return;
+
+    form.addEventListener('submit', (e) => {
+        const ram = config.ram ? parseFloat(document.getElementById('synj-ram')?.value) || 0 : 0;
+        const cpu = config.cpu ? parseFloat(document.getElementById('synj-cpu')?.value) || 0 : 0;
+        const stk = config.stockage ? parseFloat(document.getElementById('synj-stockage')?.value) || 0 : 0;
+        const prix = calculerPrix(config, ram, cpu, stk);
+        injecterChampsCache(config, ram, cpu, stk, prix);
+    });
 }
 
 document.addEventListener('DOMContentLoaded', synj_initProduit);
