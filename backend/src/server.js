@@ -1,8 +1,9 @@
 // Importation des dépendances
-
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+require('./config/redis.client');
+require('./config/db.client');
 
 // Initialisation de l'app express
 const app = express();
