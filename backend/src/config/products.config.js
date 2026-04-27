@@ -12,6 +12,10 @@ const products = {
       ram_price: 3,
       cpu_price: 3
     },
+    max_resources: {
+      ram: 4,
+      cpu: 4
+    },
     options: {
       os: null
     }
@@ -30,6 +34,11 @@ const products = {
       cpu_price: 3,
       storage_price: 0.02
     },
+    max_resources: {
+      ram: 16,
+      cpu: 4,
+      storage: 200
+    },
     options: {
       os: ["ubuntu-cli", "ubuntu-desktop", "windows-server"]
     }
@@ -47,6 +56,11 @@ const products = {
       ram_price: 3,
       cpu_price: 3,
       storage_price: 0.02
+    },
+    max_resources: {
+      ram: 4,
+      cpu: 2,
+      storage: 1000
     },
     options: {
       os: null

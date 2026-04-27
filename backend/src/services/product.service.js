@@ -10,10 +10,10 @@ async function getProductOptions(productId) {
         if (!resource) {
             return { error: "Ressources temporairement indisponibles" };
         }
-        const ramTiers = tiers.generateTiers(resource.ram, product.base_resources.ram, 1);
-        const cpuTiers = tiers.generateTiers(resource.cpu, product.base_resources.cpu, 1);
+        const ramTiers = tiers.generateTiers(Math.min(resource.ram, product.max_resources.ram), product.base_resources.ram, 1);
+        const cpuTiers = tiers.generateTiers(Math.min(resource.cpu, product.max_resources.cpu), product.base_resources.cpu, 1);
         const storageTiers = product.addons.storage_price 
-            ? tiers.generateTiers(resource.storage, product.base_resources.storage, 20)
+            ? tiers.generateTiers(Math.min(resource.storage, product.max_resources.storage), product.base_resources.storage, 20)
             : [];
         return {
             product: product,
