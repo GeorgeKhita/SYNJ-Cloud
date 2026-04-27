@@ -11,7 +11,7 @@ async function getNodeResources(nodeName) {
 
         return response.data;
     } catch(error) {
-        console.log('Erreur de connexion Proxmox' + error);
+        console.log('Erreur de connexion Proxmox' + error.message);
         return null;
     }
 }
