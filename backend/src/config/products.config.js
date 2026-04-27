@@ -1,31 +1,57 @@
-module.exports = {
+const products = {
   vpn: {
+    id: "vpn",
     name: "Serveur VPN",
-    basic_ram: 1, // En GigaOctets
-    basic_cpu: 2,
-    basic_storage: 0, // En GigaOctets
-    basic_price : 8, // En Euros
-    additional_ram : 3,
-    additional_cpu : 3
+    base_price: 8,
+    base_resources: {
+      ram: 1,
+      cpu: 2,
+      storage: 0
+    },
+    addons: {
+      ram_price: 3,
+      cpu_price: 3
+    },
+    options: {
+      os: null
+    }
   },
   vps: {
-    name: "Serveur VPS",
-    basic_ram: 4, 
-    basic_cpu: 1,
-    basic_storage: 0,
-    basic_price : 12,
-    additional_ram : 3,
-    additional_cpu : 3,
-    additional_storage : 0.4 // En Euros par tranche de 20 GigaOctets
+    id: "vps",
+    name: "Serveur VPS Linux",
+    base_price: 12,
+    base_resources: {
+      ram: 4,
+      cpu: 1,
+      storage: 0
+    },
+    addons: {
+      ram_price: 3,
+      cpu_price: 3,
+      storage_price: 0.02
+    },
+    options: {
+      os: ["ubuntu-cli", "ubuntu-desktop", "windows-server"]
+    }
   },
   nas: {
+    id: "nas",
     name: "Serveur NAS",
-    basic_ram: 2, 
-    basic_cpu: 2,
-    basic_storage: 100, 
-    basic_price : 28,
-    additional_ram : 3,
-    additional_cpu : 3,
-    additional_storage : 0.4 
+    base_price: 28,
+    base_resources: {
+      ram: 2,
+      cpu: 2,
+      storage: 100
+    },
+    addons: {
+      ram_price: 3,
+      cpu_price: 3,
+      storage_price: 0.02
+    },
+    options: {
+      os: null
+    }
   }
 };
+
+module.exports = products;

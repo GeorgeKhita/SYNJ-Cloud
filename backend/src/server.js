@@ -2,6 +2,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const router = require('./routes/product.routes');
 require('./config/redis.client');
 require('./config/db.client');
 
@@ -17,6 +18,8 @@ const PORT = process.env.PORT || 3000;
 app.get('/health', (req, res) => {
     res.json({ status : "OK"});
 });
+
+app.use(router);
 
 // Initialisation du serveur
 app.listen(PORT, function(err){
