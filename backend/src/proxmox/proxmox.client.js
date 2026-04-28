@@ -17,7 +17,7 @@ async function getNodeResources(nodeName) {
         return {
             ram: Math.floor(raw.memory.free / 1073741824),
             cpu: raw.cpuinfo.cpus,
-            storage: Math.floor(raw.rootfs.free / 1073741824)
+            storage: Math.floor(raw.local-lvm.free / 1073741824)
         };
     } catch(error) {
         console.log('Erreur de connexion Proxmox' + error.message);
