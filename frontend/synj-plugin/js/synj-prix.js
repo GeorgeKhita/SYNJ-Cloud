@@ -4,9 +4,25 @@ const SYNJ_PROXY = '/wp-json/synj/v1';
 
 // Config par produit
 const SYNJ_PRODUITS = {
-    'serveur-vpn':           { base: 8,  label: 'VPN',       ram: true, cpu: true, stockage: false },
-    'vps-linux':             { base: 12, label: 'VPS Linux',  ram: true, cpu: true,  stockage: false },
-    'serveur-nas-personnel': { base: 28, label: 'NAS',        ram: true, cpu: true, stockage: true  },
+    'serveur-vpn': { 
+        base: 8, label: 'VPN', 
+        ram: true, cpu: true, stockage: false,
+        ramBase: 1, cpuBase: 2, stockageBase: 0,
+        os: null,
+    },
+    'vps-linux': { 
+        base: 12, label: 'VPS Linux', 
+        ram: true, cpu: true, stockage: false,
+        ramBase: 4, cpuBase: 1, stockageBase: 0,
+        os: ["ubuntu-cli", "ubuntu-desktop", "windows-server"],
+    },
+    'serveur-nas-personnel': { 
+        base: 28, label: 'NAS', 
+        ram: true, cpu: true, stockage: true,
+        ramBase: 2, cpuBase: 2, stockageBase: 100,
+        os: null,
+    },
+
 };
 
 // Paliers (temporaires pour test avec petit Proxmox)
@@ -32,10 +48,10 @@ function getProduitConfig() {
 
 function calculerPrix(config, ramVal, cpuVal, stockageVal) {
     let prix = config.base;
-    if (ramVal) prix += ramVal * PRIX_RAM;
-    if (cpuVal) prix += cpuVal * PRIX_CPU;
-    if (stockageVal) prix += stockageVal * PRIX_STOCKAGE;
-    return prix.toFixed(2);
+    if (ramVal) prix += (ramVal - config.ramBase) * PRIX_RAM;
+    if (cpuVal) prix += (cpuVal - config.cpuBase) * PRIX_CPU;
+    if (stockageVal) prix += (stockageVal - config.stockageBase) * PRIX_STOCKAGE;
+    return Math.max(prix, config.base).toFixed(2);
 }
 
 function creerSelect(id, label, paliers, unite, onChange) {
@@ -59,6 +75,42 @@ function creerSelect(id, label, paliers, unite, onChange) {
         const opt = document.createElement('option');
         opt.value = p;
         opt.textContent = p + ' ' + unite;
+        select.appendChild(opt);
+    });
+
+    select.addEventListener('change', onChange);
+    wrapper.appendChild(lbl);
+    wrapper.appendChild(select);
+    return wrapper;
+}
+
+function creerSelectOS(options, onChange) {
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'margin: 12px 0;';
+
+    const lbl = document.createElement('label');
+    lbl.textContent = 'Système d\'exploitation';
+    lbl.style.cssText = 'display:block; font-weight:600; color:#1e3a5f; margin-bottom:6px; font-size:14px;';
+
+    const select = document.createElement('select');
+    select.id = 'synj-os';
+    select.style.cssText = 'width:200px; padding:8px 12px; border:2px solid #e5e7eb; border-radius:8px; font-size:14px; cursor:pointer;';
+
+    const defaultOpt = document.createElement('option');
+    defaultOpt.value = '';
+    defaultOpt.textContent = '— Choisir un OS —';
+    select.appendChild(defaultOpt);
+
+    const osLabels = {
+        'ubuntu-cli': 'Ubuntu CLI',
+        'ubuntu-desktop': 'Ubuntu Desktop',
+        'windows-server': 'Windows Server'
+    };
+
+    options.forEach(os => {
+        const opt = document.createElement('option');
+        opt.value = os;
+        opt.textContent = osLabels[os] || os;
         select.appendChild(opt);
     });
 
@@ -139,6 +191,10 @@ async function synj_initProduit() {
         zone.appendChild(creerSelect('synj-stockage', 'Stockage supplémentaire', paliersStockageDispo, 'Go', recalculer));
     }
 
+    // ← ICI
+    if (config.os && config.os.length > 0) {            zone.appendChild(creerSelectOS(config.os, recalculer));
+    }
+
     setupPanier(config);
 
     // Prix de base au chargement
@@ -147,7 +203,7 @@ async function synj_initProduit() {
 
 function injecterChampsCache(config, ram, cpu, stk, prix) {
     // Supprimer les anciens champs s'ils existent
-    ['synj_ram', 'synj_cpu', 'synj_stockage', 'synj_prix'].forEach(id => {
+    ['synj_ram', 'synj_cpu', 'synj_stockage', 'synj_prix', 'synj_os'].forEach(id => {
         const old = document.getElementById(id);
         if (old) old.remove();
     });
@@ -155,11 +211,14 @@ function injecterChampsCache(config, ram, cpu, stk, prix) {
     const form = document.querySelector('form.cart');
     if (!form) return;
 
+    const os = config.os ? document.getElementById('synj-os')?.value || '' : '';
+
     const champs = [
         { name: 'synj_ram', value: ram },
         { name: 'synj_cpu', value: cpu },
         { name: 'synj_stockage', value: stk },
         { name: 'synj_prix', value: prix },
+        { name: 'synj_os', value: os },
     ];
 
     champs.forEach(({ name, value }) => {

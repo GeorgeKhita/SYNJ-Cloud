@@ -3,15 +3,15 @@
  * Plugin Name: SYNJ Plugin
  * Plugin URI: https://synj.fr
  * Description: Plugin custom SYNJ
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: George Khitaridze & Mohamed Amine Delhem
  */
 
 if (!defined('ABSPATH')) exit;
 
 // Configuration API
-define('SYNJ_API_BASE', '');
-define('SYNJ_API_KEY', '');
+define('SYNJ_API_BASE', 'http://127.0.0.10:3000');
+define('SYNJ_API_KEY', 'edd19a44-f54c-4469-accc-0717f2981592');
 
 // Proxy PHP
 function synj_proxy_api($endpoint) {
@@ -176,6 +176,7 @@ function synj_sauvegarder_config($cart_item_data, $product_id) {
     if (isset($_POST['synj_cpu']))      $cart_item_data['synj_cpu']      = floatval($_POST['synj_cpu']);
     if (isset($_POST['synj_stockage'])) $cart_item_data['synj_stockage'] = floatval($_POST['synj_stockage']);
     if (isset($_POST['synj_prix']))     $cart_item_data['synj_prix']     = floatval($_POST['synj_prix']);
+    if (isset($_POST['synj_os']))       $cart_item_data['synj_os']       = sanitize_text_field($_POST['synj_os']);
     return $cart_item_data;
 }
 add_filter('woocommerce_add_cart_item_data', 'synj_sauvegarder_config', 10, 2);
@@ -199,7 +200,9 @@ function synj_afficher_specs_panier($item_data, $cart_item) {
         $item_data[] = ['name' => 'CPU', 'value' => $cart_item['synj_cpu'] . ' cœur(s)'];
     if (isset($cart_item['synj_stockage']) && $cart_item['synj_stockage'] > 0)
         $item_data[] = ['name' => 'Stockage', 'value' => $cart_item['synj_stockage'] . ' Go'];
-    return $item_data;
+    if (isset($cart_item['synj_os']) && !empty($cart_item['synj_os']))
+        $item_data[] = ['name' => 'OS', 'value' => $cart_item['synj_os']];
+        return $item_data;
 }
 add_filter('woocommerce_get_item_data', 'synj_afficher_specs_panier', 10, 2);
 
