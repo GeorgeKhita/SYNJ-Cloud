@@ -2,6 +2,7 @@ const product_config = require('../config/products.config');
 const proxmox_resources = require('../proxmox/resources');
 const lock_services = require('../lock/lock.service');
 const proxmox_config = require('../config/proxmox.config');
+const price_sum = require('../utils/calculatePrice');
 
 async function validateCart(productId, orderId, requested) {
   const product = product_config[productId];
@@ -25,8 +26,8 @@ async function validateCart(productId, orderId, requested) {
   if (!lock) {
     return { error: "LOCK_CONFLICT", message: "Ressource déjà réservée" };
   }
-
-  return { success: true, orderId: orderId };
+  const price = price_sum.calculatePrice(product, requested);
+  return { success: true, orderId: orderId, price: price };
 }
 
-module.exports = { validateCart };
+module.exports = {validateCart};
