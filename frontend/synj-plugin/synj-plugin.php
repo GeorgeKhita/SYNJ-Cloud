@@ -10,7 +10,7 @@
 if (!defined('ABSPATH')) exit;
 
 // Configuration API
-define('SYNJ_API_BASE', 'http://127.0.0.10:3000');
+define('SYNJ_API_BASE', 'http://127.0.0.1:3000');
 define('SYNJ_API_KEY', 'edd19a44-f54c-4469-accc-0717f2981592');
 
 // Proxy PHP
@@ -52,6 +52,15 @@ function synj_enregistrer_routes() {
     register_rest_route('synj/v1', '/storage', [
         'methods' => 'GET',
         'callback' => fn() => synj_proxy_api('/availability/storage'),
+        'permission_callback' => '__return_true'
+    ]);
+
+    register_rest_route('synj/v1', '/products/(?P<id>[a-z-]+)/options', [
+        'methods' => 'GET',
+        'callback' => function($request) {
+            $id = $request->get_param('id');
+            return synj_proxy_api('/products/' . $id . '/options');
+        },
         'permission_callback' => '__return_true'
     ]);
 }

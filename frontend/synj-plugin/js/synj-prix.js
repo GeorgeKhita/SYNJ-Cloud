@@ -9,34 +9,32 @@ const SYNJ_PRODUITS = {
         ram: true, cpu: true, stockage: false,
         ramBase: 1, cpuBase: 2, stockageBase: 0,
         os: null,
+        apiId: 'vpn',
     },
     'vps-linux': { 
         base: 12, label: 'VPS Linux', 
         ram: true, cpu: true, stockage: false,
         ramBase: 4, cpuBase: 1, stockageBase: 0,
         os: ["ubuntu-cli", "ubuntu-desktop", "windows-server"],
+        apiId: 'vps',
     },
     'serveur-nas-personnel': { 
         base: 28, label: 'NAS', 
         ram: true, cpu: true, stockage: true,
         ramBase: 2, cpuBase: 2, stockageBase: 100,
         os: null,
+        apiId: 'nas',
     },
 
 };
 
-// Paliers (temporaires pour test avec petit Proxmox)
-const PALIERS_RAM      = [1, 2, 4, 8, 16];
-const PALIERS_CPU      = [1, 2, 4, 8];
-const PALIERS_STOCKAGE = [20, 40, 60, 100, 200];
+
 // Prix add-ons
 const PRIX_RAM      = 3;   // €/Go
 const PRIX_CPU      = 3;   // €/cœur
 const PRIX_STOCKAGE = 0.02; // €/Go
 
-function generateTiers(disponible, paliers) {
-    return paliers.filter(p => p <= disponible);
-}
+
 
 function getProduitConfig() {
     const url = window.location.href;
@@ -140,21 +138,16 @@ async function synj_initProduit() {
     const prixWC = document.querySelector('.woocommerce-Price-amount, p.price, span.price');
     if (prixWC) prixWC.style.display = 'none';
 
-    // Récupérer les dispos
-    const [ramData, cpuData, storData] = await Promise.all([
-        fetch(SYNJ_PROXY + '/memory').then(r => r.json()),
-        fetch(SYNJ_PROXY + '/cpu').then(r => r.json()),
-        fetch(SYNJ_PROXY + '/storage').then(r => r.json()),
-    ]);
+    const data = await fetch(SYNJ_PROXY + '/products/' + config.apiId + '/options').then(r => r.json());
 
-    const ramDispo = ramData.available_memory / 1073741824;
-    const cpuDispo = cpuData.available_cpu;
-    const storDispo = storData.available_storage / 1073741824;
-
-    // Générer les paliers
-    const paliersRamDispo      = generateTiers(ramDispo, PALIERS_RAM);
-    const paliersCpuDispo      = generateTiers(cpuDispo, PALIERS_CPU);
-    const paliersStockageDispo = generateTiers(storDispo, PALIERS_STOCKAGE);
+    if (data.error) {
+        zone.innerHTML = '<p style="color:#ef4444">⚠️ Ressources temporairement indisponibles.</p>';
+        return;
+    }
+    
+    const paliersRamDispo      = data.tiers.ram;
+    const paliersCpuDispo      = data.tiers.cpu;
+    const paliersStockageDispo = data.tiers.storage;
 
     // Zone d'injection
     let zone = document.getElementById('synj-selects');
