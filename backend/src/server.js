@@ -2,7 +2,9 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const router = require('./routes/product.routes');
+const product_router = require('./routes/product.routes');
+const cart_router = require('./routes/cart.routes');
+
 require('./config/redis.client');
 require('./config/db.client');
 
@@ -19,7 +21,8 @@ app.get('/health', (req, res) => {
     res.json({ status : "OK"});
 });
 
-app.use(router);
+app.use(product_router);
+app.use(cart_router);
 
 // Initialisation du serveur
 app.listen(PORT, function(err){
