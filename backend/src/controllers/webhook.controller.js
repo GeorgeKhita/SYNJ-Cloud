@@ -1,4 +1,5 @@
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const provisioning = require('../provisioning/provisioning.service');
 
 async function handleWebhook(req, res) {
   const signature = req.headers['stripe-signature'];
@@ -12,7 +13,14 @@ async function handleWebhook(req, res) {
 
     switch(event.type){
         case 'payment_intent.succeeded':
-            console.log('déploiement automatique (critique)');
+            const paymentIntent = event.data.object;
+            const paymentData = {
+                paymentIntentId: paymentIntent.id,
+                ram: parseInt(paymentIntent.metadata.ram),
+                cpu: parseInt(paymentIntent.metadata.cpu),
+                storage: parseInt(paymentIntent.metadata.storage)
+            };
+            await provisioning.handlePaymentSucceeded(paymentData);
             break;
         case 'invoice.payment_failed':
             console.log('suspension service (critique)');
