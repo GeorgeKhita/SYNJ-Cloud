@@ -4,6 +4,7 @@ const express = require('express');
 const cors = require('cors');
 const product_router = require('./routes/product.routes');
 const cart_router = require('./routes/cart.routes');
+const webhook_router = require('./routes/webhook.routes');
 
 require('./config/redis.client');
 require('./config/db.client');
@@ -12,6 +13,7 @@ require('./config/db.client');
 const app = express();
 
 app.use(cors());
+app.use(webhook_router);
 app.use(express.json());
 
 const PORT = process.env.PORT || 3000;

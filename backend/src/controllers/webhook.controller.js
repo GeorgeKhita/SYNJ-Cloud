@@ -1,0 +1,40 @@
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+
+async function handleWebhook(req, res) {
+  const signature = req.headers['stripe-signature'];
+
+  try {
+    const event = stripe.webhooks.constructEvent(
+      req.body,
+      signature,
+      process.env.STRIPE_WEBHOOK_SECRET
+    );
+
+    switch(event.type){
+        case 'payment_intent.succeeded':
+            console.log('déploiement automatique (critique)');
+            break;
+        case 'invoice.payment_failed':
+            console.log('suspension service (critique)');
+            break;
+        case 'customer.subscription.deleted':
+            console.log('résiliation (haute)');
+            break;
+        case 'invoice.payment_succeeded':
+            console.log('renouvellement (haute)');
+            break;
+        case 'charge.refunded':
+            console.log('annulation/remboursement (haute)');
+            break;
+        default:
+            console.log('Événement non géré:', event.type);
+    }
+
+    res.json({ received: true });
+  } catch (error) {
+    console.log('Erreur webhook:', error.message);
+    res.status(400).json({ error: 'Signature invalide' });
+  }
+}
+
+module.exports = {handleWebhook};
