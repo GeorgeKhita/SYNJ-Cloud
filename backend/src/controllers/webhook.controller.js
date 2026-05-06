@@ -16,6 +16,7 @@ async function handleWebhook(req, res) {
             const paymentIntent = event.data.object;
             const paymentData = {
                 paymentIntentId: paymentIntent.id,
+                orderId: paymentIntent.metadata.orderId,
                 ram: parseInt(paymentIntent.metadata.ram),
                 cpu: parseInt(paymentIntent.metadata.cpu),
                 storage: parseInt(paymentIntent.metadata.storage)
