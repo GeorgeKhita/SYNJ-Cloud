@@ -2,6 +2,7 @@ const products = {
   vpn: {
     id: "vpn",
     name: "Serveur VPN",
+    templateId: 100,  // ← ID du template VPN dans Proxmox
     base_price: 8,
     base_resources: {
       ram: 1,
@@ -23,6 +24,11 @@ const products = {
   vps: {
     id: "vps",
     name: "Serveur VPS Linux",
+    templates: {
+      "ubuntu-cli": 201,
+      "ubuntu-desktop": 202,
+      "windows-server": 203
+    },
     base_price: 12,
     base_resources: {
       ram: 4,
@@ -46,6 +52,7 @@ const products = {
   nas: {
     id: "nas",
     name: "Serveur NAS",
+    templateId: 102,  
     base_price: 28,
     base_resources: {
       ram: 2,
