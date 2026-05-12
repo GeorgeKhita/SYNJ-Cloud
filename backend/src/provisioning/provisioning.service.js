@@ -6,6 +6,7 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const lock = require('../lock/lock.service');
 const crypto = require('crypto');
 const { saveService } = require('../services/service.repository');
+const { sendAccessEmail } = require('../mail/mail.service');
 
 async function getNextVmId() {
   const result = await proxmox_client.proxmoxRequest('get', '/cluster/nextid');
@@ -134,8 +135,8 @@ async function handlePaymentSucceeded(paymentData) {
   // --- Chiffrement + enregistrement BDD ---
   console.log('Enregistrement service en BDD');
   const serviceId = await saveService({
+    userId: paymentData.userId,
     orderId: paymentData.orderId,
-    customerEmail: paymentData.customerEmail,
     productId: paymentData.productId,
     node: node,
     vmId: newVmId,
@@ -152,7 +153,13 @@ async function handlePaymentSucceeded(paymentData) {
     console.log('Erreur: service déployé mais non enregistré en BDD — intervention manuelle requise');
   }
 
-  // TODO : Envoi email accès
+  // --- Envoi email accès ---
+  console.log('Envoi email accès à', paymentData.customerEmail);
+  const emailSent = await sendAccessEmail(paymentData.customerEmail, accessInfo, paymentData);
+  if (!emailSent) {
+    console.log('Avertissement: email non envoyé — intervention manuelle requise');
+  }
+
   // TODO : Mise à jour espace client
 
   return { success: true, vmId: newVmId, node: node, serviceId: serviceId };
