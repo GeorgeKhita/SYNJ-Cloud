@@ -11,6 +11,8 @@ const transporter = nodemailer.createTransport({
   }
 });
 
+// --- EMAILS ACCÈS (après déploiement) ---
+
 function buildVpnEmail(accessInfo, paymentData) {
   return {
     subject: 'SYNJ — Vos accès VPN sont prêts',
@@ -105,4 +107,124 @@ async function sendAccessEmail(customerEmail, accessInfo, paymentData) {
   }
 }
 
-module.exports = {sendAccessEmail};
+// --- EMAILS CYCLE DE VIE ---
+
+async function sendPaymentFailedEmail(customerEmail, firstName) {
+  try {
+    await transporter.sendMail({
+      from: mailConfig.from,
+      to: customerEmail,
+      subject: 'SYNJ — Échec de paiement — Action requise',
+      html: `
+        <h2>Bonjour ${firstName},</h2>
+        <p>Nous n'avons pas pu prélever votre abonnement SYNJ.</p>
+        <p>Votre service a été <strong>suspendu</strong> temporairement. Vous disposez d'un délai de <strong>14 jours</strong> pour régulariser votre paiement.</p>
+        <p>Pour mettre à jour votre moyen de paiement, connectez-vous à votre espace client.</p>
+        <p><strong>Sans action de votre part, votre service et toutes les données associées seront définitivement supprimés dans 14 jours.</strong></p>
+        <p>Cordialement,<br>L'équipe SYNJ</p>
+      `
+    });
+    console.log('Email alerte impayé envoyé à', customerEmail);
+    return true;
+  } catch (error) {
+    console.log('Erreur envoi email impayé:', error.message);
+    return false;
+  }
+}
+
+async function sendServiceReactivatedEmail(customerEmail, firstName) {
+  try {
+    await transporter.sendMail({
+      from: mailConfig.from,
+      to: customerEmail,
+      subject: 'SYNJ — Service réactivé',
+      html: `
+        <h2>Bonjour ${firstName},</h2>
+        <p>Bonne nouvelle ! Votre paiement a été reçu et votre service SYNJ a été <strong>réactivé</strong>.</p>
+        <p>Vos accès sont de nouveau disponibles depuis votre espace client.</p>
+        <p>Cordialement,<br>L'équipe SYNJ</p>
+      `
+    });
+    console.log('Email réactivation envoyé à', customerEmail);
+    return true;
+  } catch (error) {
+    console.log('Erreur envoi email réactivation:', error.message);
+    return false;
+  }
+}
+
+async function sendSubscriptionDeletedEmail(customerEmail, firstName) {
+  try {
+    await transporter.sendMail({
+      from: mailConfig.from,
+      to: customerEmail,
+      subject: 'SYNJ — Résiliation de votre abonnement',
+      html: `
+        <h2>Bonjour ${firstName},</h2>
+        <p>Votre abonnement SYNJ a été résilié.</p>
+        <p>Votre service est désormais <strong>inactif</strong>. Vos données seront conservées pendant <strong>14 jours</strong> à compter de cette date.</p>
+        <p>Passé ce délai, votre serveur et toutes les données associées seront <strong>définitivement supprimés</strong>.</p>
+        <p>Si vous souhaitez réactiver votre service, connectez-vous à votre espace client avant l'expiration du délai.</p>
+        <p>Cordialement,<br>L'équipe SYNJ</p>
+      `
+    });
+    console.log('Email résiliation envoyé à', customerEmail);
+    return true;
+  } catch (error) {
+    console.log('Erreur envoi email résiliation:', error.message);
+    return false;
+  }
+}
+
+async function sendReminderEmail(customerEmail, firstName, daysLeft) {
+  try {
+    await transporter.sendMail({
+      from: mailConfig.from,
+      to: customerEmail,
+      subject: 'SYNJ — Rappel : suppression dans ' + daysLeft + ' jours',
+      html: `
+        <h2>Bonjour ${firstName},</h2>
+        <p>Ceci est un rappel : votre service SYNJ sera <strong>définitivement supprimé dans ${daysLeft} jours</strong>.</p>
+        <p>Toutes vos données seront perdues de manière irréversible.</p>
+        <p>Pour conserver votre service, régularisez votre paiement depuis votre espace client.</p>
+        <p>Cordialement,<br>L'équipe SYNJ</p>
+      `
+    });
+    console.log('Email rappel J-' + daysLeft + ' envoyé à', customerEmail);
+    return true;
+  } catch (error) {
+    console.log('Erreur envoi email rappel:', error.message);
+    return false;
+  }
+}
+
+async function sendServiceDeletedEmail(customerEmail, firstName) {
+  try {
+    await transporter.sendMail({
+      from: mailConfig.from,
+      to: customerEmail,
+      subject: 'SYNJ — Service supprimé',
+      html: `
+        <h2>Bonjour ${firstName},</h2>
+        <p>Le délai de 14 jours étant écoulé, votre service SYNJ a été <strong>définitivement supprimé</strong>.</p>
+        <p>Toutes les données associées ont été effacées.</p>
+        <p>Si vous souhaitez souscrire à un nouveau service, rendez-vous sur notre boutique.</p>
+        <p>Cordialement,<br>L'équipe SYNJ</p>
+      `
+    });
+    console.log('Email suppression envoyé à', customerEmail);
+    return true;
+  } catch (error) {
+    console.log('Erreur envoi email suppression:', error.message);
+    return false;
+  }
+}
+
+module.exports = {
+  sendAccessEmail,
+  sendPaymentFailedEmail,
+  sendServiceReactivatedEmail,
+  sendSubscriptionDeletedEmail,
+  sendReminderEmail,
+  sendServiceDeletedEmail
+};

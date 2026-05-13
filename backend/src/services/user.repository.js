@@ -26,19 +26,29 @@ async function findUserByEmail(email) {
   }
 }
 
+async function findUserByWordpressId(wordpressId) {
+  try {
+    const [rows] = await db.execute(
+      'SELECT * FROM users WHERE wordpress_id = ?',
+      [wordpressId]
+    );
+    return rows[0] || null;
+  } catch (error) {
+    console.log('Erreur recherche utilisateur WP:', error.message);
+    return null;
+  }
+}
+
 async function createUser(userData) {
   try {
     const query = `
-      INSERT INTO users (email, password, first_name, last_name, phone)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO users (wordpress_id, email)
+      VALUES (?, ?)
     `;
 
     const values = [
-      userData.email,
-      userData.password,
-      userData.firstName,
-      userData.lastName,
-      userData.phone || null
+      userData.wordpressId,
+      userData.email
     ];
 
     const [result] = await db.execute(query, values);
@@ -62,4 +72,4 @@ async function updateStripeCustomerId(userId, stripeCustomerId) {
   }
 }
 
-module.exports = { findUserById, findUserByEmail, createUser, updateStripeCustomerId };
+module.exports = { findUserById, findUserByEmail, findUserByWordpressId, createUser, updateStripeCustomerId };

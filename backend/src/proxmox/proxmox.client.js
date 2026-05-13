@@ -59,11 +59,21 @@ async function getContainerStatus(node, vmId) {
   return await proxmoxRequest('get', '/nodes/' + node + '/lxc/' + vmId + '/status/current');
 }
 
+async function stopContainer(node, vmId) {
+  return await proxmoxRequest('post', '/nodes/' + node + '/lxc/' + vmId + '/status/stop');
+}
+
+async function deleteContainer(node, vmId) {
+  return await proxmoxRequest('delete', '/nodes/' + node + '/lxc/' + vmId);
+}
+
 module.exports = {
   getNodeResources,
   proxmoxRequest,
   cloneContainer,
   configureContainer,
   startContainer,
-  getContainerStatus
+  getContainerStatus,
+  stopContainer,
+  deleteContainer
 };

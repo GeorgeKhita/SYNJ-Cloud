@@ -41,6 +41,19 @@ async function findOrderByPaymentIntent(paymentIntentId) {
   }
 }
 
+async function findOrderBySubscription(subscriptionId) {
+  try {
+    const [rows] = await db.execute(
+      'SELECT * FROM orders WHERE stripe_subscription_id = ?',
+      [subscriptionId]
+    );
+    return rows[0] || null;
+  } catch (error) {
+    console.log('Erreur recherche commande par subscription:', error.message);
+    return null;
+  }
+}
+
 async function updateOrderStatus(orderId, status) {
   try {
     await db.execute(
@@ -54,4 +67,4 @@ async function updateOrderStatus(orderId, status) {
   }
 }
 
-module.exports = { createOrder, findOrderByPaymentIntent, updateOrderStatus };
+module.exports = { createOrder, findOrderByPaymentIntent, findOrderBySubscription, updateOrderStatus };

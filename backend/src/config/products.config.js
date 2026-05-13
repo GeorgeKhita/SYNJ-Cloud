@@ -2,12 +2,12 @@ const products = {
   vpn: {
     id: "vpn",
     name: "Serveur VPN",
-    templateId: 100,  // ← ID du template VPN dans Proxmox
+    templateId: 900,  // ← ID du template VPN dans Proxmox
     base_price: 8,
     base_resources: {
       ram: 1,
       cpu: 2,
-      storage: 0
+      storage: 4
     },
     addons: {
       ram_price: 3,
@@ -33,7 +33,7 @@ const products = {
     base_resources: {
       ram: 4,
       cpu: 1,
-      storage: 0
+      storage: 4
     },
     addons: {
       ram_price: 3,

@@ -1,48 +1,32 @@
 const authService = require('../services/auth.service');
 
-async function register(req, res) {
-  const { email, password, firstName, lastName, phone } = req.body;
+async function wordpressSync(req, res) {
+  const { wordpressId, email } = req.body;
 
-  if (!email || !password || !firstName || !lastName) {
-    return res.status(400).json({ error: 'Tous les champs sont requis' });
+  if (!wordpressId || !email) {
+    return res.status(400).json({ error: 'wordpressId et email requis' });
   }
 
-  if (password.length < 8) {
-    return res.status(400).json({ error: 'Le mot de passe doit contenir au moins 8 caractères' });
+  const wpSecret = req.headers['x-wp-secret'];
+  if (wpSecret !== process.env.WORDPRESS_SECRET) {
+    return res.status(401).json({ error: 'Secret WordPress invalide' });
   }
 
-  const result = await authService.register({ email, password, firstName, lastName, phone });
-
-  if (result.error) {
-    return res.status(400).json({ error: result.error });
-  }
-
-  res.status(201).json({
-    message: 'Compte créé avec succès',
-    userId: result.userId,
-    accessToken: result.accessToken,
-    refreshToken: result.refreshToken
+  const user = await authService.syncWordPressUser({
+    wordpressId: wordpressId,
+    email: email
   });
-}
 
-async function login(req, res) {
-  const { email, password } = req.body;
-
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Email et mot de passe requis' });
+  if (!user) {
+    return res.status(500).json({ error: 'Erreur synchronisation utilisateur' });
   }
 
-  const result = await authService.login(email, password);
-
-  if (result.error) {
-    return res.status(401).json({ error: result.error });
-  }
+  const tokens = authService.generateTokens(user.id, user.email);
 
   res.json({
-    message: 'Connexion réussie',
-    userId: result.userId,
-    accessToken: result.accessToken,
-    refreshToken: result.refreshToken
+    userId: user.id,
+    accessToken: tokens.accessToken,
+    refreshToken: tokens.refreshToken
   });
 }
 
@@ -62,4 +46,4 @@ async function refresh(req, res) {
   res.json({ accessToken: result.accessToken });
 }
 
-module.exports = { register, login, refresh };
+module.exports = { wordpressSync, refresh };

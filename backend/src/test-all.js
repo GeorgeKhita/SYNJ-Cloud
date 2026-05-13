@@ -1,17 +1,17 @@
-require('dotenv').config();
+// require('dotenv').config();
 
-// --- Test 1 : Encryption ---
-console.log('=== TEST ENCRYPTION ===');
-const { encrypt, decrypt } = require('./utils/encryption');
+// // --- Test 1 : Encryption ---
+// console.log('=== TEST ENCRYPTION ===');
+// const { encrypt, decrypt } = require('./utils/encryption');
 
-const original = '192.168.1.100';
-const encrypted = encrypt(original);
-const decrypted = decrypt(encrypted);
+// const original = '192.168.1.100';
+// const encrypted = encrypt(original);
+// const decrypted = decrypt(encrypted);
 
-console.log('Original:', original);
-console.log('Chiffré:', encrypted);
-console.log('Déchiffré:', decrypted);
-console.log('Test encryption:', original === decrypted ? 'OK' : 'ECHEC');
+// console.log('Original:', original);
+// console.log('Chiffré:', encrypted);
+// console.log('Déchiffré:', decrypted);
+// console.log('Test encryption:', original === decrypted ? 'OK' : 'ECHEC');
 
 // --- Test 2 : saveService (MySQL) ---
 async function testSaveService() {

@@ -1,65 +1,46 @@
-const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const authConfig = require('../config/auth.config');
 const userRepo = require('./user.repository');
 
-async function register(userData) {
-  const existing = await userRepo.findUserByEmail(userData.email);
-  if (existing) {
-    return { error: 'Email déjà utilisé' };
+async function syncWordPressUser(wpUser) {
+  let user = await userRepo.findUserByWordpressId(wpUser.wordpressId);
+
+  if (!user) {
+    user = await userRepo.findUserByEmail(wpUser.email);
   }
 
-  const hashedPassword = await bcrypt.hash(userData.password, 10);
-
-  const userId = await userRepo.createUser({
-    email: userData.email,
-    password: hashedPassword,
-    firstName: userData.firstName,
-    lastName: userData.lastName
-  });
-
-  if (!userId) {
-    return { error: 'Erreur lors de la création du compte' };
+  if (!user) {
+    const userId = await userRepo.createUser({
+      wordpressId: wpUser.wordpressId,
+      email: wpUser.email
+    });
+    user = await userRepo.findUserById(userId);
   }
 
-  const tokens = generateTokens(userId, userData.email);
-
-  return {
-    success: true,
-    userId: userId,
-    ...tokens
-  };
+  return user;
 }
 
-async function login(email, password) {
-  const user = await userRepo.findUserByEmail(email);
-  if (!user) {
-    return { error: 'Email ou mot de passe incorrect' };
-  }
+function generateTokens(userId, email) {
+  const accessToken = jwt.sign(
+    { userId: userId, email: email },
+    authConfig.jwt_secret,
+    { expiresIn: authConfig.jwt_expiration }
+  );
 
-  if (user.status !== 'active') {
-    return { error: 'Compte désactivé' };
-  }
+  const refreshToken = jwt.sign(
+    { userId: userId },
+    authConfig.refresh_secret,
+    { expiresIn: authConfig.refresh_expiration }
+  );
 
-  const validPassword = await bcrypt.compare(password, user.password);
-  if (!validPassword) {
-    return { error: 'Email ou mot de passe incorrect' };
-  }
-
-  const tokens = generateTokens(user.id, user.email);
-
-  return {
-    success: true,
-    userId: user.id,
-    ...tokens
-  };
+  return { accessToken, refreshToken };
 }
 
 async function refreshAccessToken(refreshToken) {
   try {
     const decoded = jwt.verify(refreshToken, authConfig.refresh_secret);
-
     const user = await userRepo.findUserById(decoded.userId);
+
     if (!user || user.status !== 'active') {
       return { error: 'Utilisateur invalide' };
     }
@@ -76,20 +57,4 @@ async function refreshAccessToken(refreshToken) {
   }
 }
 
-function generateTokens(userId, email) {
-  const accessToken = jwt.sign(
-    { userId: userId, email: email },
-    authConfig.jwt_secret,
-    { expiresIn: authConfig.jwt_expiration }
-  );
-
-  const refreshToken = jwt.sign(
-    { userId: userId },
-    authConfig.refresh_secret,
-    { expiresIn: authConfig.refresh_expiration }
-  );
-
-  return { accessToken: accessToken, refreshToken: refreshToken };
-}
-
-module.exports = { register, login, refreshAccessToken };
+module.exports = { syncWordPressUser, generateTokens, refreshAccessToken };

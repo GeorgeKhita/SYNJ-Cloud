@@ -1,7 +1,9 @@
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-const provisioning = require('../provisioning/provisioning.service');
 const orderRepo = require('../services/order.repository');
 const userRepo = require('../services/user.repository');
+const serviceRepo = require('../services/service.repository');
+const proxmoxClient = require('../proxmox/proxmox.client');
+const mail = require('../mail/mail.service');
 
 async function handleWebhook(req, res) {
   const signature = req.headers['stripe-signature'];
@@ -14,57 +16,112 @@ async function handleWebhook(req, res) {
     );
 
     switch (event.type) {
-      case 'payment_intent.succeeded':
+
+      case 'payment_intent.succeeded': {
         const paymentIntent = event.data.object;
+        console.log('Paiement reçu:', paymentIntent.id, '— en attente de provision via /orders/provision');
+        break;
+      }
 
-        // Retrouver la commande en BDD
-        const order = await orderRepo.findOrderByPaymentIntent(paymentIntent.id);
-        if (!order) {
-          console.log('Commande introuvable pour PaymentIntent:', paymentIntent.id);
-          break;
-        }
+      case 'invoice.payment_failed': {
+        const invoice = event.data.object;
+        const subscriptionId = invoice.subscription;
 
-        // Retrouver l'email du client
+        if (!subscriptionId) break;
+
+        const order = await orderRepo.findOrderBySubscription(subscriptionId);
+        if (!order) break;
+
+        const service = await serviceRepo.findServiceByOrderId(order.id);
+        if (!service) break;
+
         const user = await userRepo.findUserById(order.user_id);
-        if (!user) {
-          console.log('Utilisateur introuvable pour order:', order.id);
-          break;
+
+        await serviceRepo.suspendService(service.id);
+        await orderRepo.updateOrderStatus(order.id, 'failed');
+        await proxmoxClient.stopContainer(service.node_name, service.vm_id);
+
+        console.log('Service', service.id, 'suspendu — CT', service.vm_id, 'arrêté');
+
+        if (user) {
+          await mail.sendPaymentFailedEmail(user.email, user.first_name);
+        }
+        break;
+      }
+
+      case 'invoice.payment_succeeded': {
+        const invoice = event.data.object;
+        const subscriptionId = invoice.subscription;
+
+        if (!subscriptionId) break;
+
+        const order = await orderRepo.findOrderBySubscription(subscriptionId);
+        if (!order) break;
+
+        const service = await serviceRepo.findServiceByOrderId(order.id);
+        if (!service) break;
+
+        if (service.status === 'suspended') {
+          await serviceRepo.reactivateService(service.id);
+          await orderRepo.updateOrderStatus(order.id, 'paid');
+          await proxmoxClient.startContainer(service.node_name, service.vm_id);
+
+          console.log('Service', service.id, 'réactivé — CT', service.vm_id, 'redémarré');
+
+          const user = await userRepo.findUserById(order.user_id);
+          if (user) {
+            await mail.sendServiceReactivatedEmail(user.email, user.first_name);
+          }
+        }
+        break;
+      }
+
+      case 'customer.subscription.deleted': {
+        const subscription = event.data.object;
+        const subscriptionId = subscription.id;
+
+        const order = await orderRepo.findOrderBySubscription(subscriptionId);
+        if (!order) break;
+
+        const service = await serviceRepo.findServiceByOrderId(order.id);
+        if (!service) break;
+
+        await serviceRepo.markPendingDeletion(service.id);
+        await orderRepo.updateOrderStatus(order.id, 'failed');
+
+        if (service.status === 'active') {
+          await proxmoxClient.stopContainer(service.node_name, service.vm_id);
         }
 
-        // Mettre à jour le statut de la commande
-        await orderRepo.updateOrderStatus(order.id, 'paid');
+        console.log('Service', service.id, 'en attente de suppression — J+14');
 
-        // Construire paymentData depuis la BDD
-        const paymentData = {
-          paymentIntentId: paymentIntent.id,
-          orderId: order.id,
-          userId: order.user_id,
-          customerEmail: user.email,
-          productId: order.product_id,
-          ram: order.ram,
-          cpu: order.cpu,
-          storage: order.storage,
-          os: order.os
-        };
-
-        await provisioning.handlePaymentSucceeded(paymentData);
+        const user = await userRepo.findUserById(order.user_id);
+        if (user) {
+          await mail.sendSubscriptionDeletedEmail(user.email, user.first_name);
+        }
         break;
+      }
 
-      case 'invoice.payment_failed':
-        console.log('suspension service (critique)');
-        break;
+      case 'charge.refunded': {
+        const charge = event.data.object;
+        const paymentIntentId = charge.payment_intent;
 
-      case 'customer.subscription.deleted':
-        console.log('résiliation (haute)');
-        break;
+        const order = await orderRepo.findOrderByPaymentIntent(paymentIntentId);
+        if (!order) break;
 
-      case 'invoice.payment_succeeded':
-        console.log('renouvellement (haute)');
-        break;
+        await orderRepo.updateOrderStatus(order.id, 'refunded');
 
-      case 'charge.refunded':
-        console.log('annulation/remboursement (haute)');
+        const service = await serviceRepo.findServiceByOrderId(order.id);
+        if (service && service.status !== 'deleted') {
+          await proxmoxClient.stopContainer(service.node_name, service.vm_id);
+          await new Promise(resolve => setTimeout(resolve, 5000));
+          await proxmoxClient.deleteContainer(service.node_name, service.vm_id);
+          await serviceRepo.deleteService(service.id);
+
+          console.log('Service', service.id, 'supprimé après remboursement');
+        }
         break;
+      }
 
       default:
         console.log('Événement non géré:', event.type);

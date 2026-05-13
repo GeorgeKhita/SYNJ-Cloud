@@ -2,7 +2,6 @@ const proxmox_resources = require('../proxmox/resources');
 const proxmox_client = require('../proxmox/proxmox.client');
 const proxmox_config = require('../config/proxmox.config');
 const products = require('../config/products.config');
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const lock = require('../lock/lock.service');
 const crypto = require('crypto');
 const { saveService } = require('../services/service.repository');
@@ -45,19 +44,13 @@ async function handlePaymentSucceeded(paymentData) {
   // --- Vérification ressources ---
   const resource = await proxmox_resources.getResources(node);
   if (!resource) {
-    try {
-      await stripe.refunds.create({ payment_intent: paymentData.paymentIntentId });
-    } catch (e) {
-      console.log('Erreur remboursement:', e.message);
-    }
     await lock.releaseLock(paymentData.orderId);
-    return { error: "Proxmox indisponible, remboursement effectué" };
+    return { error: "Proxmox indisponible" };
   }
 
   if (paymentData.ram > resource.ram || paymentData.cpu > resource.cpu || paymentData.storage > resource.storage) {
-    await stripe.refunds.create({ payment_intent: paymentData.paymentIntentId });
     await lock.releaseLock(paymentData.orderId);
-    return { error: "Ressources insuffisantes, remboursement effectué" };
+    return { error: "Ressources insuffisantes" };
   }
 
   console.log('Re-vérification OK, prêt pour déploiement');
@@ -65,7 +58,6 @@ async function handlePaymentSucceeded(paymentData) {
   // --- Récupérer le template ID du produit ---
   const product = products[paymentData.productId];
   if (!product) {
-    await stripe.refunds.create({ payment_intent: paymentData.paymentIntentId });
     await lock.releaseLock(paymentData.orderId);
     return { error: "Produit inconnu: " + paymentData.productId };
   }
@@ -73,7 +65,6 @@ async function handlePaymentSucceeded(paymentData) {
   // --- Obtenir un VMID unique ---
   const newVmId = await getNextVmId();
   if (!newVmId) {
-    await stripe.refunds.create({ payment_intent: paymentData.paymentIntentId });
     await lock.releaseLock(paymentData.orderId);
     return { error: "Impossible d'obtenir un VMID" };
   }
@@ -82,10 +73,13 @@ async function handlePaymentSucceeded(paymentData) {
   console.log('Clonage template', product.templateId, '→ nouveau CT', newVmId);
   const cloneResult = await proxmox_client.cloneContainer(node, product.templateId, newVmId);
   if (!cloneResult) {
-    await stripe.refunds.create({ payment_intent: paymentData.paymentIntentId });
     await lock.releaseLock(paymentData.orderId);
     return { error: "Échec du clonage CT" };
   }
+
+  // --- Attente clonage ---
+  console.log('Attente clonage...');
+  await new Promise(resolve => setTimeout(resolve, 30000));
 
   // --- Configuration CT (RAM, CPU, réseau) ---
   console.log('Configuration CT', newVmId);
@@ -93,7 +87,7 @@ async function handlePaymentSucceeded(paymentData) {
   const configResult = await proxmox_client.configureContainer(node, newVmId, {
     memory: paymentData.ram * 1024,
     cores: paymentData.cpu,
-    rootfs: 'local-lvm:' + (paymentData.storage || 8),
+    rootfs: `local-lvm:vm-${newVmId}-disk-0,size=${paymentData.storage || 4}G`,
     net0: 'name=eth0,bridge=vmbr0,ip=dhcp'
   });
   if (!configResult) {
@@ -104,7 +98,6 @@ async function handlePaymentSucceeded(paymentData) {
   console.log('Démarrage CT', newVmId);
   const startResult = await proxmox_client.startContainer(node, newVmId);
   if (!startResult) {
-    await stripe.refunds.create({ payment_intent: paymentData.paymentIntentId });
     await lock.releaseLock(paymentData.orderId);
     return { error: "Échec du démarrage CT" };
   }
@@ -113,7 +106,6 @@ async function handlePaymentSucceeded(paymentData) {
   console.log('Health check CT', newVmId);
   const isRunning = await waitForContainer(node, newVmId, 12);
   if (!isRunning) {
-    await stripe.refunds.create({ payment_intent: paymentData.paymentIntentId });
     await lock.releaseLock(paymentData.orderId);
     return { error: "CT non démarré après timeout" };
   }
@@ -159,8 +151,6 @@ async function handlePaymentSucceeded(paymentData) {
   if (!emailSent) {
     console.log('Avertissement: email non envoyé — intervention manuelle requise');
   }
-
-  // TODO : Mise à jour espace client
 
   return { success: true, vmId: newVmId, node: node, serviceId: serviceId };
 }
