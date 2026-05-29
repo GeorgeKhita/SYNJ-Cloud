@@ -1,40 +1,44 @@
-// SYNJ — Prix dynamique + selects dynamiques (P10/P11)
+// SYNJ — Prix dynamique + selects + auth JWT
 
 const SYNJ_PROXY = '/wp-json/synj/v1';
 
-// Config par produit
+// window.__synj, apiCall() et refreshTokens() sont définis dans synj-auth.js (chargé avant)
+
+// -------------------------------------------------------------------
+// Config produits
+// -------------------------------------------------------------------
+
 const SYNJ_PRODUITS = {
-    'serveur-vpn': { 
-        base: 8, label: 'VPN', 
+    'serveur-vpn': {
+        base: 8, label: 'VPN',
         ram: true, cpu: true, stockage: false,
         ramBase: 1, cpuBase: 2, stockageBase: 0,
         os: null,
         apiId: 'vpn',
     },
-    'vps-linux': { 
-        base: 12, label: 'VPS Linux', 
+    'vps-linux': {
+        base: 12, label: 'VPS Linux',
         ram: true, cpu: true, stockage: false,
         ramBase: 4, cpuBase: 1, stockageBase: 0,
-        os: ["ubuntu-cli", "ubuntu-desktop", "windows-server"],
+        os: ['ubuntu-cli', 'ubuntu-desktop', 'windows-server'],
         apiId: 'vps',
     },
-    'serveur-nas-personnel': { 
-        base: 28, label: 'NAS', 
+    'serveur-nas-personnel': {
+        base: 28, label: 'NAS',
         ram: true, cpu: true, stockage: true,
         ramBase: 2, cpuBase: 2, stockageBase: 100,
         os: null,
         apiId: 'nas',
     },
-
 };
 
+const PRIX_RAM      = 3;
+const PRIX_CPU      = 3;
+const PRIX_STOCKAGE = 0.02;
 
-// Prix add-ons
-const PRIX_RAM      = 3;   // €/Go
-const PRIX_CPU      = 3;   // €/cœur
-const PRIX_STOCKAGE = 0.02; // €/Go
-
-
+// -------------------------------------------------------------------
+// Helpers UI
+// -------------------------------------------------------------------
 
 function getProduitConfig() {
     const url = window.location.href;
@@ -46,8 +50,8 @@ function getProduitConfig() {
 
 function calculerPrix(config, ramVal, cpuVal, stockageVal) {
     let prix = config.base;
-    if (ramVal) prix += (ramVal - config.ramBase) * PRIX_RAM;
-    if (cpuVal) prix += (cpuVal - config.cpuBase) * PRIX_CPU;
+    if (ramVal)      prix += (ramVal      - config.ramBase)      * PRIX_RAM;
+    if (cpuVal)      prix += (cpuVal      - config.cpuBase)      * PRIX_CPU;
     if (stockageVal) prix += (stockageVal - config.stockageBase) * PRIX_STOCKAGE;
     return Math.max(prix, config.base).toFixed(2);
 }
@@ -100,9 +104,9 @@ function creerSelectOS(options, onChange) {
     select.appendChild(defaultOpt);
 
     const osLabels = {
-        'ubuntu-cli': 'Ubuntu CLI',
+        'ubuntu-cli':     'Ubuntu CLI',
         'ubuntu-desktop': 'Ubuntu Desktop',
-        'windows-server': 'Windows Server'
+        'windows-server': 'Windows Server',
     };
 
     options.forEach(os => {
@@ -118,7 +122,7 @@ function creerSelectOS(options, onChange) {
     return wrapper;
 }
 
-function afficherPrix(prix, config) {
+function afficherPrix(prix) {
     let zone = document.getElementById('synj-prix-dynamique');
     if (!zone) {
         zone = document.createElement('div');
@@ -130,26 +134,19 @@ function afficherPrix(prix, config) {
     zone.textContent = 'Prix estimé : ' + prix + ' €/mois';
 }
 
+// -------------------------------------------------------------------
+// Init page produit
+// -------------------------------------------------------------------
+
 async function synj_initProduit() {
     const config = getProduitConfig();
     if (!config) return;
 
-    // Cacher le prix WooCommerce
     const prixWC = document.querySelector('.woocommerce-Price-amount, p.price, span.price');
     if (prixWC) prixWC.style.display = 'none';
 
     const data = await fetch(SYNJ_PROXY + '/products/' + config.apiId + '/options').then(r => r.json());
 
-    if (data.error) {
-        zone.innerHTML = '<p style="color:#ef4444">⚠️ Ressources temporairement indisponibles.</p>';
-        return;
-    }
-    
-    const paliersRamDispo      = data.tiers.ram;
-    const paliersCpuDispo      = data.tiers.cpu;
-    const paliersStockageDispo = data.tiers.storage;
-
-    // Zone d'injection
     let zone = document.getElementById('synj-selects');
     if (!zone) {
         zone = document.createElement('div');
@@ -159,14 +156,22 @@ async function synj_initProduit() {
         if (addToCart) addToCart.insertAdjacentElement('beforebegin', zone);
     }
 
+    if (data.error) {
+        zone.innerHTML = '<p style="color:#ef4444">⚠️ Ressources temporairement indisponibles.</p>';
+        return;
+    }
+
+    const paliersRamDispo      = data.tiers.ram;
+    const paliersCpuDispo      = data.tiers.cpu;
+    const paliersStockageDispo = data.tiers.storage;
+
     const recalculer = () => {
-        const ram = config.ram ? parseFloat(document.getElementById('synj-ram')?.value) || 0 : 0;
-        const cpu = config.cpu ? parseFloat(document.getElementById('synj-cpu')?.value) || 0 : 0;
+        const ram = config.ram      ? parseFloat(document.getElementById('synj-ram')?.value)      || 0 : 0;
+        const cpu = config.cpu      ? parseFloat(document.getElementById('synj-cpu')?.value)      || 0 : 0;
         const stk = config.stockage ? parseFloat(document.getElementById('synj-stockage')?.value) || 0 : 0;
-        afficherPrix(calculerPrix(config, ram, cpu, stk), config);
+        afficherPrix(calculerPrix(config, ram, cpu, stk));
     };
 
-    // Ajouter les selects selon le produit
     if (config.ram && paliersRamDispo.length > 0) {
         zone.appendChild(creerSelect('synj-ram', 'RAM supplémentaire', paliersRamDispo, 'Go', recalculer));
     } else if (config.ram) {
@@ -184,21 +189,21 @@ async function synj_initProduit() {
         zone.appendChild(creerSelect('synj-stockage', 'Stockage supplémentaire', paliersStockageDispo, 'Go', recalculer));
     }
 
-    // ← ICI
-    if (config.os && config.os.length > 0) {            zone.appendChild(creerSelectOS(config.os, recalculer));
+    if (config.os && config.os.length > 0) {
+        zone.appendChild(creerSelectOS(config.os, recalculer));
     }
 
     setupPanier(config);
-
-    // Prix de base au chargement
-    afficherPrix(config.base.toFixed(2), config);
+    afficherPrix(config.base.toFixed(2));
 }
 
+// -------------------------------------------------------------------
+// Gestion du panier
+// -------------------------------------------------------------------
+
 function injecterChampsCache(config, ram, cpu, stk, prix) {
-    // Supprimer les anciens champs s'ils existent
     ['synj_ram', 'synj_cpu', 'synj_stockage', 'synj_prix', 'synj_os'].forEach(id => {
-        const old = document.getElementById(id);
-        if (old) old.remove();
+        document.getElementById(id)?.remove();
     });
 
     const form = document.querySelector('form.cart');
@@ -206,19 +211,17 @@ function injecterChampsCache(config, ram, cpu, stk, prix) {
 
     const os = config.os ? document.getElementById('synj-os')?.value || '' : '';
 
-    const champs = [
-        { name: 'synj_ram', value: ram },
-        { name: 'synj_cpu', value: cpu },
-        { name: 'synj_stockage', value: stk },
-        { name: 'synj_prix', value: prix },
-        { name: 'synj_os', value: os },
-    ];
-
-    champs.forEach(({ name, value }) => {
+    [
+        { name: 'synj_ram',      value: ram  },
+        { name: 'synj_cpu',      value: cpu  },
+        { name: 'synj_stockage', value: stk  },
+        { name: 'synj_prix',     value: prix },
+        { name: 'synj_os',       value: os   },
+    ].forEach(({ name, value }) => {
         const input = document.createElement('input');
-        input.type = 'hidden';
-        input.id = name;
-        input.name = name;
+        input.type  = 'hidden';
+        input.id    = name;
+        input.name  = name;
         input.value = value;
         form.appendChild(input);
     });
@@ -228,10 +231,10 @@ function setupPanier(config) {
     const form = document.querySelector('form.cart');
     if (!form) return;
 
-    form.addEventListener('submit', (e) => {
-        const ram = config.ram ? parseFloat(document.getElementById('synj-ram')?.value) || 0 : 0;
-        const cpu = config.cpu ? parseFloat(document.getElementById('synj-cpu')?.value) || 0 : 0;
-        const stk = config.stockage ? parseFloat(document.getElementById('synj-stockage')?.value) || 0 : 0;
+    form.addEventListener('submit', () => {
+        const ram  = config.ram      ? parseFloat(document.getElementById('synj-ram')?.value)      || 0 : 0;
+        const cpu  = config.cpu      ? parseFloat(document.getElementById('synj-cpu')?.value)      || 0 : 0;
+        const stk  = config.stockage ? parseFloat(document.getElementById('synj-stockage')?.value) || 0 : 0;
         const prix = calculerPrix(config, ram, cpu, stk);
         injecterChampsCache(config, ram, cpu, stk, prix);
     });
