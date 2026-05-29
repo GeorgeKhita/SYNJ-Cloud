@@ -158,6 +158,59 @@ function synj_inject_tokens_in_js(): void {
 add_action('wp_head', 'synj_inject_tokens_in_js', 1); // priorité 1 — avant les scripts (priorité 8)
 
 // -------------------------------------------------------------------
+// Page admin — Gestion des produits
+// -------------------------------------------------------------------
+
+function synj_admin_menu(): void {
+    add_menu_page(
+        'SYNJ Produits',
+        'SYNJ Produits',
+        'manage_options',
+        'synj-products',
+        'synj_admin_products_page',
+        'dashicons-cart',
+        30
+    );
+}
+add_action('admin_menu', 'synj_admin_menu');
+
+function synj_admin_products_page(): void {
+    if (!current_user_can('manage_options')) return;
+    ?>
+    <div class="wrap">
+        <h1>SYNJ — Gestion des produits</h1>
+        <div id="synj-admin-app">Chargement...</div>
+    </div>
+    <?php
+}
+
+function synj_enqueue_admin_script(string $hook): void {
+    if ($hook !== 'toplevel_page_synj-products') return;
+
+    // synj-auth.js nécessaire pour window.__synj sur les pages admin
+    wp_enqueue_script(
+        'synj-auth-admin',
+        plugin_dir_url(__FILE__) . 'js/synj-auth.js',
+        [],
+        '1.0.3',
+        false
+    );
+    wp_add_inline_script('synj-auth-admin', 'window.__SYNJ_API_BASE = ' . json_encode(SYNJ_API_URL) . ';', 'before');
+
+    wp_enqueue_script(
+        'synj-admin',
+        plugin_dir_url(__FILE__) . 'js/synj-admin.js',
+        ['synj-auth-admin'],
+        '1.0.3',
+        true
+    );
+}
+add_action('admin_enqueue_scripts', 'synj_enqueue_admin_script');
+
+// Injecte les tokens dans le <head> admin aussi (login admin → tokens disponibles)
+add_action('admin_head', 'synj_inject_tokens_in_js', 1);
+
+// -------------------------------------------------------------------
 // Routes REST WordPress (endpoints publics proxifiés)
 // -------------------------------------------------------------------
 
