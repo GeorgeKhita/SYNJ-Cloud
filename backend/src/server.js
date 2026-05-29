@@ -1,32 +1,32 @@
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const product_router = require('./routes/product.routes');
-const cart_router = require('./routes/cart.routes');
-const webhook_router = require('./routes/webhook.routes');
-const authRoutes = require('./routes/auth.routes');
-const orderRoutes = require('./routes/order.routes');
-require('./cron/cleanup.cron');
-require('./config/redis.client');
-require('./config/db.client');
+import 'dotenv/config';
+import './config/env.js';  // valide le .env au démarrage, crash si invalide
+
+import express from 'express';
+import helmet from 'helmet';
+import cors from 'cors';
+import { rateLimit } from 'express-rate-limit';
+
+import logger, { httpLogger } from './utils/logger.js';
+import { errorHandler } from './middlewares/errorHandler.js';
+import { env } from './config/env.js';
 
 const app = express();
-app.use(cors());
-app.use(webhook_router);
+
+app.use(helmet());
+app.use(cors({
+  origin: env.NODE_ENV === 'production' ? env.FRONTEND_URL : true,
+}));
 app.use(express.json());
-app.use('/api/auth', authRoutes);
+app.use(rateLimit({ windowMs: 60_000, limit: 100 }));
+app.use(httpLogger);
 
-const PORT = process.env.PORT || 3000;
+import authRoutes from './routes/auth.routes.js';
+app.use('/auth', authRoutes);
 
-app.get('/health', (req, res) => {
-  res.json({ status: "OK" });
-});
+app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
-app.use('/api', product_router);
-app.use('/api', cart_router);
-app.use('/api', orderRoutes);
+app.use(errorHandler);
 
-app.listen(PORT, function (err) {
-  if (err) console.log("Erreur lors de l'initialisation du serveur ...");
-  else console.log("Server listening on Port", PORT);
+app.listen(env.PORT, () => {
+  logger.info(`Server running on port ${env.PORT} [${env.NODE_ENV}]`);
 });

@@ -1,40 +1,17 @@
-const jwt = require('jsonwebtoken');
-const authConfig = require('../config/auth.config');
+import { AppError } from '../utils/AppError.js';
+import { verifyAccess } from '../utils/jwt.js';
 
-function verifyToken(req, res, next) {
-  const header = req.headers['authorization'];
-
-  if (!header) {
-    return res.status(401).json({ error: 'Token manquant' });
+export function requireAuth(req, _res, next) {
+  const header = req.headers.authorization;
+  if (!header?.startsWith('Bearer ')) {
+    return next(AppError.unauthorized());
   }
 
-  const token = header.split(' ')[1];
-  if (!token) {
-    return res.status(401).json({ error: 'Format token invalide' });
-  }
-
+  const token = header.slice(7);
   try {
-    const decoded = jwt.verify(token, authConfig.jwt_secret);
-    req.user = {
-      userId: decoded.userId,
-      email: decoded.email
-    };
+    req.user = verifyAccess(token);
     next();
-  } catch (error) {
-    if (error.name === 'TokenExpiredError') {
-      return res.status(401).json({ error: 'Token expiré' });
-    }
-    return res.status(401).json({ error: 'Token invalide' });
+  } catch {
+    next(AppError.unauthorized('Token invalide ou expiré', 'TOKEN_INVALID'));
   }
 }
-
-function verifyAdmin(req, res, next) {
-  // À compléter plus tard quand on aura le panneau admin
-  // Pour l'instant on vérifie juste le token
-  verifyToken(req, res, () => {
-    // TODO: vérifier req.user.role === 'admin'
-    next();
-  });
-}
-
-module.exports = { verifyToken, verifyAdmin };

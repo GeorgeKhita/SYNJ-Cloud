@@ -1,37 +1,36 @@
 {
-  "name": "backend",
+  "name": "synj-cloud-backend",
   "version": "1.0.0",
+  "type": "module",
   "main": "src/server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "nodemon src/server.js"
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/GeorgeKhita/SYNJ-Cloud.git"
-  },
-  "author": "Mohamed Amine DELHEM",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/GeorgeKhita/SYNJ-Cloud/issues"
-  },
-  "homepage": "https://github.com/GeorgeKhita/SYNJ-Cloud#readme",
-  "description": "",
   "dependencies": {
-    "axios": "^1.15.2",
-    "bcryptjs": "^3.0.3",
-    "cors": "^2.8.6",
-    "dotenv": "^17.4.2",
-    "express": "^5.2.1",
-    "ioredis": "^5.10.1",
-    "joi": "^18.1.2",
-    "jsonwebtoken": "^9.0.3",
-    "mysql2": "^3.22.2",
-    "node-cron": "^4.2.1",
-    "nodemailer": "^8.0.6",
-    "stripe": "^22.1.0"
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^5.1.0",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.0.0",
+    "ioredis": "^5.4.1",
+    "jsonwebtoken": "^9.0.2",
+    "mysql2": "^3.11.3",
+    "node-ssh": "^13.2.0",
+    "nodemailer": "^6.9.15",
+    "pino": "^9.5.0",
+    "pino-http": "^11.0.0",
+    "pino-pretty": "^13.0.0",
+    "stripe": "^17.3.1",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
-    "nodemon": "^3.1.14"
+    "@eslint/js": "^9.15.0",
+    "eslint": "^9.15.0",
+    "globals": "^15.12.0",
+    "vitest": "^2.1.5"
   }
 }

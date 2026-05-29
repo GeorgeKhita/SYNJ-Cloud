@@ -1,49 +1,28 @@
-const authService = require('../services/auth.service');
+import * as authService from '../services/auth.service.js';
+import * as userRepo from '../repositories/user.repository.js';
 
-async function wordpressSync(req, res) {
-  const { wordpressId, email } = req.body;
-
-  if (!wordpressId || !email) {
-    return res.status(400).json({ error: 'wordpressId et email requis' });
-  }
-
-  const wpSecret = req.headers['x-wp-secret'];
-  if (wpSecret !== process.env.WORDPRESS_SECRET) {
-    return res.status(401).json({ error: 'Secret WordPress invalide' });
-  }
-
-  const user = await authService.syncWordPressUser({
-    wordpressId: wordpressId,
-    email: email
-  });
-
-  if (!user) {
-    return res.status(500).json({ error: 'Erreur synchronisation utilisateur' });
-  }
-
-  const tokens = authService.generateTokens(user.id, user.email);
-
-  res.json({
-    userId: user.id,
-    accessToken: tokens.accessToken,
-    refreshToken: tokens.refreshToken
-  });
+export async function wordpressLogin(req, res) {
+  const { accessToken, refreshToken, user } = await authService.loginFromWordpress(req.body);
+  res.json({ accessToken, refreshToken, user });
 }
 
-async function refresh(req, res) {
+export async function refresh(req, res) {
   const { refreshToken } = req.body;
-
-  if (!refreshToken) {
-    return res.status(400).json({ error: 'Refresh token requis' });
-  }
-
-  const result = await authService.refreshAccessToken(refreshToken);
-
-  if (result.error) {
-    return res.status(401).json({ error: result.error });
-  }
-
-  res.json({ accessToken: result.accessToken });
+  const tokens = await authService.refreshTokens(refreshToken);
+  res.json(tokens);
 }
 
-module.exports = { wordpressSync, refresh };
+export async function logout(req, res) {
+  await authService.logout(req.user.sub);
+  res.json({ message: 'Déconnecté' });
+}
+
+export async function logoutFromWordpress(req, res) {
+  await authService.logoutFromWordpress(req.body);
+  res.json({ message: 'Déconnecté' });
+}
+
+export async function me(req, res) {
+  const user = await userRepo.findById(req.user.sub);
+  res.json({ user });
+}

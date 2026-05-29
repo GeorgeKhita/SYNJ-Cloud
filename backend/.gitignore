@@ -1,20 +1,22 @@
-# --- SÉCURITÉ ---
-# Fichier contenant les secrets (Hôte, Tokens, etc.)
+# Dépendances
+node_modules/
+
+# Secrets
 .env
 .env.local
 .env.*.local
+proxmox_key
 
-# --- DÉPENDANCES ---
-# On ne versionne pas les 200 Mo de modules installés
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+# Logs
+*.log
+logs/
 
-# --- DIVERS ---
-# Fichiers système et logs
+# Fichiers de test et notes
+*.txt
+
+# OS
 .DS_Store
+
+# Build
 dist/
 build/
-logs
-*.logsrc/test-*.js
