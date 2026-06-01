@@ -21,7 +21,7 @@ window.__synj = {
     get isLoggedIn() { return !!sessionStorage.getItem('synj_access'); },
 };
 
-// 3. Refresh tokens si besoin
+// 3. Refresh tokens
 async function refreshTokens() {
     const res = await fetch(window.__SYNJ_API_BASE + '/auth/refresh', {
         method:  'POST',
