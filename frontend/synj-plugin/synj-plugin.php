@@ -220,8 +220,8 @@ function synj_charger_scripts() {
     wp_localize_script('synj-auth', '__SYNJ_CONFIG', [
         'apiBase' => SYNJ_API_URL,
     ]);
-    // Injecte window.__SYNJ_API_BASE pour synj-auth.js
-    wp_add_inline_script('synj-auth', 'window.__SYNJ_API_BASE = ' . json_encode(SYNJ_API_URL) . ';', 'before');
+    // Injecte window.__SYNJ_API_BASE et window.__SYNJ_LOGGED_IN pour synj-auth.js
+    wp_add_inline_script('synj-auth', 'window.__SYNJ_API_BASE = ' . json_encode(SYNJ_API_URL) . '; window.__SYNJ_LOGGED_IN = ' . (is_user_logged_in() ? 'true' : 'false') . ';', 'before');
 
     // synj-prix.js chargé uniquement sur les pages produit
     if (is_product()) {

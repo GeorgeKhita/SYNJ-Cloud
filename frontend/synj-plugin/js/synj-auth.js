@@ -1,5 +1,11 @@
 // SYNJ — Auth global (chargé sur toutes les pages)
 
+// 0. Si WordPress dit que l'utilisateur est déconnecté → vider les tokens
+if (window.__SYNJ_LOGGED_IN === false) {
+    sessionStorage.removeItem('synj_access');
+    sessionStorage.removeItem('synj_refresh');
+}
+
 // 1. Si PHP vient d'injecter de nouveaux tokens → les sauvegarder en sessionStorage
 if (window.__SYNJ_ACCESS_TOKEN__) {
     sessionStorage.setItem('synj_access',  window.__SYNJ_ACCESS_TOKEN__);

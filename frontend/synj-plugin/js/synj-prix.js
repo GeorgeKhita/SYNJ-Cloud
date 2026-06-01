@@ -41,6 +41,18 @@ function creerSelect(id, ressource, onChange) {
     return wrapper;
 }
 
+function afficherErreur(message) {
+    let zone = document.getElementById('synj-erreur');
+    if (!zone) {
+        zone = document.createElement('div');
+        zone.id = 'synj-erreur';
+        zone.style.cssText = 'background:#fee2e2; color:#dc2626; padding:12px 16px; border-radius:8px; margin:12px 0; font-size:14px;';
+        const selectsZone = document.getElementById('synj-selects');
+        if (selectsZone) selectsZone.insertAdjacentElement('afterend', zone);
+    }
+    zone.textContent = message;
+}
+
 function afficherPrix(prix) {
     let zone = document.getElementById('synj-prix-dynamique');
     if (!zone) {
@@ -160,8 +172,48 @@ function setupPanier(produit, rc) {
     const form = document.querySelector('form.cart');
     if (!form) return;
 
-    form.addEventListener('submit', () => {
-        injecterChampsCache(produit, rc);
+    const btn = form.querySelector('[type="submit"]');
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        // Pas connecté → message + redirect vers login
+        if (!window.__synj?.isLoggedIn) {
+            afficherErreur('Vous devez être connecté pour commander.');
+            setTimeout(() => {
+                window.location.href = '/my-account/?redirect_to=' + encodeURIComponent(window.location.href);
+            }, 1500);
+            return;
+        }
+
+        // Ressources sélectionnées
+        const resources = {};
+        if (rc.cpu)        resources.cpu        = parseInt(document.getElementById('synj-cpu')?.value)      || rc.cpu.min;
+        if (rc.ram_gb)     resources.ram_gb     = parseInt(document.getElementById('synj-ram')?.value)      || rc.ram_gb.min;
+        if (rc.storage_gb) resources.storage_gb = parseInt(document.getElementById('synj-stockage')?.value) || rc.storage_gb.min;
+
+        if (btn) { btn.disabled = true; btn.textContent = 'Création du panier...'; }
+        document.getElementById('synj-erreur')?.remove();
+
+        try {
+            const cart = await apiCall('POST', '/cart', { productId: produit.id, resources });
+
+            if (cart?.cartOrderId) {
+                sessionStorage.setItem('synj_cart_id',      cart.cartOrderId);
+                sessionStorage.setItem('synj_cart_expires', cart.expiresAt);
+                injecterChampsCache(produit, rc);
+                form.submit();
+            } else {
+                const msg = cart?.error?.code === 'RATE_LIMIT'
+                    ? 'Trop de tentatives. Veuillez patienter 15 minutes.'
+                    : (cart?.error?.message || 'Erreur lors de la création du panier.');
+                afficherErreur(msg);
+                if (btn) { btn.disabled = false; btn.textContent = 'Ajouter au panier'; }
+            }
+        } catch {
+            afficherErreur('Erreur réseau. Veuillez réessayer.');
+            if (btn) { btn.disabled = false; btn.textContent = 'Ajouter au panier'; }
+        }
     });
 }
 
