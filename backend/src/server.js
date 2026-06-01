@@ -20,8 +20,11 @@ app.use(express.json());
 app.use(rateLimit({ windowMs: 60_000, limit: 100 }));
 app.use(httpLogger);
 
-import authRoutes from './routes/auth.routes.js';
-app.use('/auth', authRoutes);
+import authRoutes    from './routes/auth.routes.js';
+import productRoutes from './routes/product.routes.js';
+
+app.use('/auth',     authRoutes);
+app.use('/products', productRoutes);
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 

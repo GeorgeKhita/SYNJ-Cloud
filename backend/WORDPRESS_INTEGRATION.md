@@ -1,6 +1,6 @@
 # Intégration WordPress → SYNJ Cloud API
 
-**Version actuelle — mise à jour le 2026-05-28**
+**Version actuelle — mise à jour le 2026-05-29**
 
 ---
 
@@ -293,6 +293,7 @@ async function refreshTokens() {
 
 ## Routes disponibles
 
+### Auth
 | Méthode | Route | Auth | Description |
 |---|---|---|---|
 | `POST` | `/auth/wordpress` | Non | Login / inscription via payload signé |
@@ -301,6 +302,13 @@ async function refreshTokens() {
 | `POST` | `/auth/logout` | Bearer token | Déconnexion depuis JS frontend |
 | `GET` | `/auth/me` | Bearer token | Infos utilisateur connecté |
 | `GET` | `/health` | Non | Vérifier si l'API est disponible |
+
+### Produits (public)
+| Méthode | Route | Auth | Description |
+|---|---|---|---|
+| `GET` | `/products` | Non | Liste des produits actifs (+ `?type=vpn\|vps\|nas`) |
+| `GET` | `/products/:id` | Non | Détail d'un produit |
+| `POST` | `/products/:id/calculate-price` | Non | Calcul de prix dynamique |
 
 ---
 
@@ -331,7 +339,8 @@ const res = await fetch('http://100.113.174.49:3000/auth/refresh', {
 const data = await res.json();
 console.log(data);
 // Attendu : { accessToken: "...", refreshToken: "..." }
-window.__synj = data; // Mettre à jour les tokens
+window.__synj.accessToken  = data.accessToken;
+window.__synj.refreshToken = data.refreshToken;
 ```
 
 ### Test 4 — Logout puis refresh (doit échouer)

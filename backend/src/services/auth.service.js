@@ -46,7 +46,7 @@ export async function loginFromWordpress(payload) {
 
   const user = await userRepo.upsert(payload.wordpress_id, payload.email, payload.first_name, payload.last_name ?? '');
 
-  const tokenPayload = { sub: user.id, email: user.email };
+  const tokenPayload = { sub: user.id, email: user.email, role: user.role };
   const accessToken  = signAccess(tokenPayload);
   const refreshToken = signRefresh(tokenPayload);
 
@@ -75,7 +75,7 @@ export async function refreshTokens(token) {
   const user = await userRepo.findById(decoded.sub);
   if (!user) throw AppError.unauthorized('Utilisateur introuvable', 'USER_NOT_FOUND');
 
-  const tokenPayload = { sub: user.id, email: user.email };
+  const tokenPayload = { sub: user.id, email: user.email, role: user.role };
   const newAccess    = signAccess(tokenPayload);
   const newRefresh   = signRefresh(tokenPayload);
 

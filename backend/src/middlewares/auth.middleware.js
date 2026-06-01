@@ -15,3 +15,8 @@ export function requireAuth(req, _res, next) {
     next(AppError.unauthorized('Token invalide ou expiré', 'TOKEN_INVALID'));
   }
 }
+
+export function requireAdmin(req, _res, next) {
+  if (req.user?.role !== 'admin') return next(AppError.forbidden());
+  next();
+}
