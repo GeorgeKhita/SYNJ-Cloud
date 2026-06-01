@@ -196,23 +196,22 @@ function setupPanier(produit, rc) {
         document.getElementById('synj-erreur')?.remove();
 
         try {
-            const cart = await apiCall('POST', '/cart', { productId: produit.id, resources });
+            const result = await apiCall('POST', '/cart/items', { productId: produit.id, resources });
 
-            if (cart?.cartOrderId) {
-                sessionStorage.setItem('synj_cart_id',      cart.cartOrderId);
-                sessionStorage.setItem('synj_cart_expires', cart.expiresAt);
-                injecterChampsCache(produit, rc);
-                form.submit();
+            if (result?.cartOrderId) {
+                sessionStorage.setItem('synj_cart_id',          result.cartOrderId);
+                sessionStorage.setItem('synj_cart_product_url', window.location.href);
+                window.location.href = '/checkout-synj/';
             } else {
-                const msg = cart?.error?.code === 'RATE_LIMIT'
+                const msg = result?.error?.code === 'RATE_LIMIT'
                     ? 'Trop de tentatives. Veuillez patienter 15 minutes.'
-                    : (cart?.error?.message || 'Erreur lors de la création du panier.');
+                    : (result?.error?.message || 'Erreur lors de la création du panier.');
                 afficherErreur(msg);
-                if (btn) { btn.disabled = false; btn.textContent = 'Ajouter au panier'; }
+                if (btn) { btn.disabled = false; btn.textContent = 'Commander'; }
             }
         } catch {
             afficherErreur('Erreur réseau. Veuillez réessayer.');
-            if (btn) { btn.disabled = false; btn.textContent = 'Ajouter au panier'; }
+            if (btn) { btn.disabled = false; btn.textContent = 'Commander'; }
         }
     });
 }

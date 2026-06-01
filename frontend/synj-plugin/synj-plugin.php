@@ -223,6 +223,17 @@ function synj_charger_scripts() {
     // Injecte window.__SYNJ_API_BASE et window.__SYNJ_LOGGED_IN pour synj-auth.js
     wp_add_inline_script('synj-auth', 'window.__SYNJ_API_BASE = ' . json_encode(SYNJ_API_URL) . '; window.__SYNJ_LOGGED_IN = ' . (is_user_logged_in() ? 'true' : 'false') . ';', 'before');
 
+    // synj-checkout.js chargé sur la page checkout custom
+    if (is_page('checkout-synj')) {
+        wp_enqueue_script(
+            'synj-checkout',
+            plugin_dir_url(__FILE__) . 'js/synj-checkout.js',
+            ['synj-auth'],
+            '1.0.0',
+            true
+        );
+    }
+
     // synj-prix.js chargé uniquement sur les pages produit
     if (is_product()) {
         wp_enqueue_script(
