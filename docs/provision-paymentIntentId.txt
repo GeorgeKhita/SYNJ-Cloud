@@ -1,0 +1,20 @@
+Ajout champ paymentIntentId dans POST /provision
+=================================================
+
+Lors de l'appel POST /provision après paiement confirmé,
+ajouter le champ "paymentIntentId" dans le body :
+
+{
+  "email": "...",
+  "firstName": "...",
+  "productType": "nas",
+  "templateId": 900,
+  "externalOrderId": "WC-304",
+  "cartId": "52",
+  "paymentIntentId": "pi_xxxxxxxxxxxxxxxx",
+  "resources": { "cpu": 3, "ram_gb": 12, "storage_gb": 1500 }
+}
+
+Le paymentIntentId se trouve dans les métadonnées de la commande
+WooCommerce — le plugin Stripe WooCommerce le stocke automatiquement
+sous la clé _stripe_intent_id.

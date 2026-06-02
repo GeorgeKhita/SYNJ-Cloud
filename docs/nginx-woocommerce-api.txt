@@ -1,0 +1,13 @@
+Config nginx à ajouter pour l'API WooCommerce
+=============================================
+
+Sur le vhost nginx du site WordPress, dans le bloc server {}, ajouter :
+
+    location /wp-json/ {
+        try_files $uri $uri/ /index.php?$args;
+    }
+
+Vérifier aussi qu'il n'y a pas de "limit_except GET" qui bloquerait
+les requêtes POST sur ce chemin.
+
+Sans ça, les remboursements automatiques du backend échouent en 405.

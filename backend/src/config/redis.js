@@ -1,11 +1,9 @@
 import Redis from 'ioredis';
+import { env } from './env.js';
+import logger from '../utils/logger.js';
 
-const redis = new Redis({
-  host: process.env.REDIS_HOST || '127.0.0.1',
-  port: Number(process.env.REDIS_PORT) || 6379,
-  lazyConnect: true,
-});
+const redis = new Redis({ host: env.REDIS_HOST, port: env.REDIS_PORT, lazyConnect: true });
 
-redis.on('error', (err) => console.error('[Redis]', err.message));
+redis.on('error', (err) => logger.error({ err: err.message }, 'redis:error'));
 
 export default redis;
