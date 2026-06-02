@@ -39,12 +39,18 @@ add_action('admin_menu', function () {
 add_action('admin_init', function () {
     register_setting('synj_settings', 'synj_api_key');
     register_setting('synj_settings', 'synj_api_base');
+    register_setting('synj_settings', 'synj_stripe_secret_key');
 
     add_settings_section('synj_main', 'Configuration API', null, 'synj-settings');
 
     add_settings_field('synj_api_key', 'Clé API (X-API-Key)', function () {
         $val = esc_attr(get_option('synj_api_key'));
         echo "<input type='text' name='synj_api_key' value='$val' style='width:500px;'>";
+    }, 'synj-settings', 'synj_main');
+
+    add_settings_field('synj_stripe_secret_key', 'Clé secrète Stripe (sk_...)', function () {
+        $val = esc_attr(get_option('synj_stripe_secret_key'));
+        echo "<input type='password' name='synj_stripe_secret_key' value='$val' style='width:500px;'>";
     }, 'synj-settings', 'synj_main');
 
     add_settings_field('synj_api_base', 'URL du backend', function () {
@@ -223,7 +229,15 @@ add_action('woocommerce_checkout_create_order_line_item', function ($item, $cart
 // Provisioning après paiement confirmé
 // -------------------------------------------------------------------
 
-add_action('woocommerce_payment_complete', function (int $order_id): void {
+// Déclenche le provisioning après autorisation Stripe (capture manuelle → statut on-hold)
+add_action('woocommerce_order_status_on-hold', 'synj_lancer_provisioning', 10, 1);
+// Fallback si capture automatique activée
+add_action('woocommerce_payment_complete', 'synj_lancer_provisioning', 10, 1);
+
+function synj_lancer_provisioning(int $order_id): void {
+    // Éviter le double déclenchement si les deux hooks se suivent
+    if (get_post_meta($order_id, 'synj_provision_launched', true)) return;
+    update_post_meta($order_id, 'synj_provision_launched', '1');
     $order = wc_get_order($order_id);
     if (!$order) return;
 
@@ -282,20 +296,105 @@ add_action('woocommerce_payment_complete', function (int $order_id): void {
             'timeout' => 15,
         ]);
 
-        if (!is_wp_error($response)) {
-            $http_code = wp_remote_retrieve_response_code($response);
-            $body_raw  = wp_remote_retrieve_body($response);
-            $data      = json_decode($body_raw, true);
-            error_log('[SYNJ] Réponse /provision — HTTP ' . $http_code . ' — ' . $body_raw);
-            if (!empty($data['serviceId'])) {
-                update_post_meta($order_id, 'synj_service_id', $data['serviceId']);
-                error_log('[SYNJ] Provisioning lancé — serviceId: ' . $data['serviceId'] . ' pour commande WC-' . $order_id);
-            }
-        } else {
+        if (is_wp_error($response)) {
             error_log('[SYNJ] Provisioning wp_error : ' . $response->get_error_message());
+            continue;
+        }
+
+        $http_code = wp_remote_retrieve_response_code($response);
+        $data      = json_decode(wp_remote_retrieve_body($response), true);
+        error_log('[SYNJ] Réponse /provision — HTTP ' . $http_code . ' — ' . wp_json_encode($data));
+
+        if (!empty($data['serviceId'])) {
+            update_post_meta($order_id, 'synj_service_id',       $data['serviceId']);
+            update_post_meta($order_id, 'synj_provision_status', 'provisioning');
+            update_post_meta($order_id, 'synj_provision_attempts', 0);
+            // Premier check dans 30 secondes
+            wp_schedule_single_event(time() + 30, 'synj_check_provision', [$order_id]);
+            error_log('[SYNJ] Provisioning lancé — serviceId: ' . $data['serviceId'] . ' — check planifié dans 30s');
+        } else {
+            error_log('[SYNJ] Provisioning échoué — pas de serviceId reçu');
         }
     }
+}
+
+// -------------------------------------------------------------------
+// Polling statut provisioning (WP Cron)
+// -------------------------------------------------------------------
+
+add_action('synj_check_provision', function (int $order_id): void {
+    $order      = wc_get_order($order_id);
+    $service_id = get_post_meta($order_id, 'synj_service_id', true);
+    $attempts   = (int) get_post_meta($order_id, 'synj_provision_attempts', true);
+
+    if (!$order || !$service_id) return;
+
+    $response = wp_remote_get(synj_get_api_url() . '/provision/' . $service_id . '/status', [
+        'headers' => ['X-API-Key' => synj_get_api_key()],
+        'timeout' => 10,
+    ]);
+
+    if (is_wp_error($response)) {
+        error_log('[SYNJ] Polling wp_error : ' . $response->get_error_message());
+        synj_reschedule_or_timeout($order_id, $attempts);
+        return;
+    }
+
+    $data   = json_decode(wp_remote_retrieve_body($response), true);
+    $status = $data['status'] ?? '';
+    error_log('[SYNJ] Polling WC-' . $order_id . ' — statut: ' . $status . ' (tentative ' . ($attempts + 1) . ')');
+
+    if ($status === 'active') {
+        update_post_meta($order_id, 'synj_provision_status', 'active');
+        $order->update_status('processing', '[SYNJ] Service déployé, capture du paiement en cours.');
+        synj_capturer_paiement($order);
+
+    } elseif ($status === 'failed') {
+        update_post_meta($order_id, 'synj_provision_status', 'failed');
+        $order->update_status('failed', '[SYNJ] Déploiement échoué — autorisation annulée.');
+        synj_annuler_paiement($order);
+
+    } else {
+        synj_reschedule_or_timeout($order_id, $attempts);
+    }
 });
+
+function synj_reschedule_or_timeout(int $order_id, int $attempts): void {
+    if ($attempts < 6) { // 6 × 30s = 3 minutes max
+        update_post_meta($order_id, 'synj_provision_attempts', $attempts + 1);
+        wp_schedule_single_event(time() + 30, 'synj_check_provision', [$order_id]);
+    } else {
+        $order = wc_get_order($order_id);
+        update_post_meta($order_id, 'synj_provision_status', 'timeout');
+        $order?->update_status('failed', '[SYNJ] Timeout provisioning (3 min) — autorisation annulée.');
+        synj_annuler_paiement($order);
+        error_log('[SYNJ] Timeout provisioning pour WC-' . $order_id);
+    }
+}
+
+function synj_capturer_paiement(WC_Order $order): void {
+    $pi_id = $order->get_meta('_stripe_intent_id');
+    if (!$pi_id) {
+        error_log('[SYNJ] Capture impossible — _stripe_intent_id manquant pour WC-' . $order->get_id());
+        return;
+    }
+    $response = wp_remote_post('https://api.stripe.com/v1/payment_intents/' . $pi_id . '/capture', [
+        'headers' => ['Authorization' => 'Basic ' . base64_encode(get_option('synj_stripe_secret_key') . ':')],
+        'timeout' => 15,
+    ]);
+    $data = json_decode(wp_remote_retrieve_body($response), true);
+    error_log('[SYNJ] Capture Stripe — statut: ' . ($data['status'] ?? 'inconnu') . ' pour WC-' . $order->get_id());
+}
+
+function synj_annuler_paiement(WC_Order $order): void {
+    $pi_id = $order->get_meta('_stripe_intent_id');
+    if (!$pi_id) return;
+    wp_remote_post('https://api.stripe.com/v1/payment_intents/' . $pi_id . '/cancel', [
+        'headers' => ['Authorization' => 'Basic ' . base64_encode(get_option('synj_stripe_secret_key') . ':')],
+        'timeout' => 15,
+    ]);
+    error_log('[SYNJ] Autorisation annulée — PI: ' . $pi_id . ' pour WC-' . $order->get_id());
+}
 
 // -------------------------------------------------------------------
 // Shortcode disponibilités
