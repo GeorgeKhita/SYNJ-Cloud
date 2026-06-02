@@ -9,7 +9,8 @@ import logger from '../utils/logger.js';
 function proxmoxRequest(method, path, body) {
   return new Promise((resolve, reject) => {
     const url     = new URL(`${env.PROXMOX_URL}${path}`);
-    const payload = body ? JSON.stringify(body) : null;
+    const isPost  = ['POST', 'PUT'].includes(method.toUpperCase());
+    const payload = JSON.stringify(body ?? (isPost ? {} : undefined)) ?? null;
 
     const req = https.request({
       hostname:           url.hostname,
@@ -26,8 +27,12 @@ function proxmoxRequest(method, path, body) {
       let raw = '';
       res.on('data', chunk => { raw += chunk; });
       res.on('end', () => {
+        if (res.statusCode >= 400) {
+          logger.error({ method, path, status: res.statusCode, body: raw }, 'proxmox:http_error');
+          return reject(new Error(`Proxmox ${res.statusCode} sur ${method} ${path}: ${raw.slice(0, 200)}`));
+        }
         try   { resolve(JSON.parse(raw).data ?? null); }
-        catch { reject(new Error(`Proxmox response invalide sur ${method} ${path}`)); }
+        catch { reject(new Error(`Proxmox JSON invalide sur ${method} ${path}: ${raw.slice(0, 200)}`)); }
       });
     });
 
