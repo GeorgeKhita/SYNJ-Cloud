@@ -3,165 +3,135 @@
  * Plugin Name: SYNJ Plugin
  * Plugin URI: https://synj.fr
  * Description: Plugin custom SYNJ
- * Version: 1.0.3
+ * Version: 2.0.0
  * Author: George Khitaridze & Mohamed Amine Delhem
  */
 
 if (!defined('ABSPATH')) exit;
 
-// SYNJ_API_URL et SYNJ_WORDPRESS_SECRET doivent être définis dans wp-config.php :
-// define('SYNJ_API_URL',          'http://100.113.174.49:3000');
-// define('SYNJ_WORDPRESS_SECRET', '70ff7f57a6d95966d56072ffd6896918');
+// SYNJ_API_URL doit être défini dans wp-config.php :
+// define('SYNJ_API_URL', 'http://100.113.174.49:3000');
+//
+// La clé API est stockée dans les options WordPress (Settings > SYNJ) :
+// synj_api_key = d0132a0ee01b2efcdb40a82b18d41ed4da013c6283ead6afa6fc91bd4df1c3a9
 
 // -------------------------------------------------------------------
-// Auth
+// Page de réglages (Settings > SYNJ)
 // -------------------------------------------------------------------
 
-function synj_generate_auth_payload(WP_User $user): array {
-    $wordpress_id = (int) $user->ID;
-    $email        = $user->user_email;
-    $first_name   = $user->first_name ?: $user->display_name;
-    $last_name    = $user->last_name  ?: '';
-    $timestamp    = intval(microtime(true) * 1000);
+add_action('admin_menu', function () {
+    add_options_page('SYNJ', 'SYNJ', 'manage_options', 'synj-settings', function () {
+        ?>
+        <div class="wrap">
+            <h1>Réglages SYNJ</h1>
+            <form method="post" action="options.php">
+                <?php
+                settings_fields('synj_settings');
+                do_settings_sections('synj-settings');
+                submit_button();
+                ?>
+            </form>
+        </div>
+        <?php
+    });
+});
 
-    $signature = hash_hmac(
-        'sha256',
-        "{$wordpress_id}:{$email}:{$timestamp}",
-        SYNJ_WORDPRESS_SECRET
-    );
+add_action('admin_init', function () {
+    register_setting('synj_settings', 'synj_api_key');
+    register_setting('synj_settings', 'synj_api_base');
 
-    return compact('wordpress_id', 'email', 'first_name', 'last_name', 'timestamp', 'signature');
+    add_settings_section('synj_main', 'Configuration API', null, 'synj-settings');
+
+    add_settings_field('synj_api_key', 'Clé API (X-API-Key)', function () {
+        $val = esc_attr(get_option('synj_api_key'));
+        echo "<input type='text' name='synj_api_key' value='$val' style='width:500px;'>";
+    }, 'synj-settings', 'synj_main');
+
+    add_settings_field('synj_api_base', 'URL du backend', function () {
+        $val = esc_attr(get_option('synj_api_base', SYNJ_API_URL));
+        echo "<input type='text' name='synj_api_base' value='$val' style='width:400px;'>";
+    }, 'synj-settings', 'synj_main');
+});
+
+function synj_get_api_key(): string {
+    return get_option('synj_api_key', defined('API_KEY') ? API_KEY : '');
 }
 
-// Appelle l'API et stocke les tokens — retourne true ou WP_Error
-function synj_call_auth_api(WP_User $user): true|WP_Error {
-    $payload  = synj_generate_auth_payload($user);
-    $response = wp_remote_post(SYNJ_API_URL . '/auth/wordpress', [
-        'headers' => ['Content-Type' => 'application/json'],
-        'body'    => wp_json_encode($payload),
+function synj_get_api_url(): string {
+    return get_option('synj_api_base', defined('SYNJ_API_URL') ? SYNJ_API_URL : '');
+}
+
+// -------------------------------------------------------------------
+// Proxy API backend (server-to-server avec X-API-Key)
+// -------------------------------------------------------------------
+
+function synj_api_post(string $endpoint, array $body): array {
+    $response = wp_remote_post(synj_get_api_url() . $endpoint, [
+        'headers' => [
+            'Content-Type' => 'application/json',
+            'X-API-Key'    => synj_get_api_key(),
+        ],
+        'body'    => json_encode($body),
+        'timeout' => 15,
+    ]);
+
+    if (is_wp_error($response)) {
+        error_log('[SYNJ] API POST error: ' . $response->get_error_message());
+        return ['error' => true, 'message' => $response->get_error_message()];
+    }
+
+    return json_decode(wp_remote_retrieve_body($response), true) ?? [];
+}
+
+function synj_api_delete(string $endpoint): array {
+    $response = wp_remote_request(synj_get_api_url() . $endpoint, [
+        'method'  => 'DELETE',
+        'headers' => [
+            'Content-Type' => 'application/json',
+            'X-API-Key'    => synj_get_api_key(),
+        ],
         'timeout' => 10,
     ]);
 
     if (is_wp_error($response)) {
-        error_log('[SYNJ] API injoignable: ' . $response->get_error_message());
-        return new WP_Error(
-            'synj_api_unavailable',
-            'Service temporairement indisponible. Veuillez réessayer dans quelques instants.'
-        );
+        error_log('[SYNJ] API DELETE error: ' . $response->get_error_message());
+        return ['error' => true];
     }
 
-    $status = wp_remote_retrieve_response_code($response);
-    $body   = json_decode(wp_remote_retrieve_body($response), true);
-
-    if ($status !== 200 || !isset($body['accessToken'])) {
-        $message = $body['error']['message'] ?? 'Erreur d\'authentification.';
-        error_log('[SYNJ] Erreur API (' . $status . '): ' . $message);
-        return new WP_Error('synj_api_error', $message);
-    }
-
-    set_transient('synj_tokens_' . $user->ID, [
-        'accessToken'  => $body['accessToken'],
-        'refreshToken' => $body['refreshToken'],
-    ], 60);
-
-    return true;
+    return json_decode(wp_remote_retrieve_body($response), true) ?? [];
 }
 
-// CONNEXION — bloque le login si l'API est down
-function synj_authenticate_user(WP_User|WP_Error $user, string $password): WP_User|WP_Error {
-    if (is_wp_error($user)) return $user;
-
-    $result = synj_call_auth_api($user);
-    if (is_wp_error($result)) return $result;
-
-    return $user;
-}
-add_filter('wp_authenticate_user', 'synj_authenticate_user', 10, 2);
-
-// Vérifie que l'API est disponible
-function synj_check_api_available(): bool {
-    $health = wp_remote_get(SYNJ_API_URL . '/health', ['timeout' => 5]);
-    return !is_wp_error($health) && wp_remote_retrieve_response_code($health) === 200;
-}
-
-// INSCRIPTION — formulaire natif WordPress
-function synj_check_api_before_register(WP_Error $errors): WP_Error {
-    if (!synj_check_api_available()) {
-        $errors->add(
-            'synj_api_unavailable',
-            '<strong>Erreur</strong> : Inscription impossible, service temporairement indisponible. Réessayez dans quelques instants.'
-        );
-    }
-    return $errors;
-}
-add_filter('registration_errors', 'synj_check_api_before_register');
-
-// INSCRIPTION — formulaire WooCommerce
-function synj_check_api_before_woo_register(WP_Error $errors): WP_Error {
-    if (!synj_check_api_available()) {
-        $errors->add(
-            'synj_api_unavailable',
-            'Inscription impossible : service temporairement indisponible. Réessayez dans quelques instants.'
-        );
-    }
-    return $errors;
-}
-add_filter('woocommerce_registration_errors', 'synj_check_api_before_woo_register');
-
-// INSCRIPTION — après création du compte, appelle l'API
-function synj_on_user_register(int $user_id): void {
-    $user = get_userdata($user_id);
-    if (!$user) return;
-
-    $result = synj_call_auth_api($user);
-    if (is_wp_error($result)) {
-        error_log('[SYNJ] Échec sync après inscription user_id=' . $user_id . ': ' . $result->get_error_message());
-    }
-}
-add_action('user_register', 'synj_on_user_register', 10, 1);
-
-// DÉCONNEXION — révoque le refresh token via payload signé
-function synj_on_wp_logout(int $user_id): void {
-    $user = get_userdata($user_id);
-    if (!$user) return;
-
-    $payload = synj_generate_auth_payload($user);
-
-    wp_remote_post(SYNJ_API_URL . '/auth/logout-wp', [
-        'headers' => ['Content-Type' => 'application/json'],
-        'body'    => wp_json_encode($payload),
-        'timeout' => 5,
+function synj_proxy_api(string $endpoint): array {
+    $response = wp_remote_get(synj_get_api_url() . $endpoint, [
+        'headers' => [
+            'Content-Type' => 'application/json',
+            'X-API-Key'    => synj_get_api_key(),
+        ],
+        'timeout' => 10,
     ]);
 
-    delete_transient('synj_tokens_' . $user_id);
+    if (is_wp_error($response)) {
+        error_log('[SYNJ] Proxy erreur : ' . $response->get_error_message());
+        return ['error' => true, 'message' => $response->get_error_message()];
+    }
+
+    return json_decode(wp_remote_retrieve_body($response), true) ?? [];
 }
-add_action('wp_logout', 'synj_on_wp_logout', 10, 1);
-
-// Injecte les tokens dans le <head> — consommé une seule fois après login/inscription
-function synj_inject_tokens_in_js(): void {
-    if (!is_user_logged_in()) return;
-
-    $user_id = get_current_user_id();
-    $tokens  = get_transient('synj_tokens_' . $user_id);
-    if (!$tokens) return;
-
-    delete_transient('synj_tokens_' . $user_id);
-
-    $access  = esc_js($tokens['accessToken']);
-    $refresh = esc_js($tokens['refreshToken']);
-
-    echo "<script>
-        window.__SYNJ_ACCESS_TOKEN__  = '{$access}';
-        window.__SYNJ_REFRESH_TOKEN__ = '{$refresh}';
-    </script>\n";
-}
-add_action('wp_head', 'synj_inject_tokens_in_js', 1); // priorité 1 — avant les scripts (priorité 8)
 
 // -------------------------------------------------------------------
-// Routes REST WordPress (endpoints publics proxifiés)
+// Routes REST WordPress
 // -------------------------------------------------------------------
 
-function synj_enregistrer_routes() {
+add_action('rest_api_init', function () {
+
+    register_rest_route('synj/v1', '/availability/check', [
+        'methods'             => 'POST',
+        'callback'            => function (WP_REST_Request $request) {
+            return rest_ensure_response(synj_api_post('/availability/check', $request->get_json_params() ?? []));
+        },
+        'permission_callback' => '__return_true',
+    ]);
+
     register_rest_route('synj/v1', '/memory', [
         'methods'             => 'GET',
         'callback'            => fn() => synj_proxy_api('/availability/memory'),
@@ -179,119 +149,159 @@ function synj_enregistrer_routes() {
         'callback'            => fn() => synj_proxy_api('/availability/storage'),
         'permission_callback' => '__return_true',
     ]);
+});
 
-    register_rest_route('synj/v1', '/products/(?P<id>[a-z-]+)/options', [
-        'methods'             => 'GET',
-        'callback'            => function ($request) {
-            return synj_proxy_api('/products/' . $request->get_param('id') . '/options');
-        },
-        'permission_callback' => '__return_true',
-    ]);
-}
-add_action('rest_api_init', 'synj_enregistrer_routes');
+// -------------------------------------------------------------------
+// Chargement des scripts
+// -------------------------------------------------------------------
 
-function synj_proxy_api(string $endpoint): array {
-    $response = wp_remote_get(SYNJ_API_URL . $endpoint, [
-        'headers' => ['Content-Type' => 'application/json'],
-        'timeout' => 10,
-    ]);
+add_action('wp_enqueue_scripts', function () {
+    if (!is_product()) return;
 
-    if (is_wp_error($response)) {
-        error_log('[SYNJ] Proxy erreur : ' . $response->get_error_message());
-        return ['error' => true, 'message' => $response->get_error_message()];
+    wp_enqueue_script('synj-prix', plugin_dir_url(__FILE__) . 'js/synj-prix.js', [], '2.0.0', true);
+
+    // Injecter la clé API et les données produit pour le JS
+    $product_id = get_queried_object_id();
+    $cart_id = '';
+    if (function_exists('WC') && WC()->session) {
+        $cart_id = WC()->session->get_customer_id() ?? '';
     }
 
-    return json_decode(wp_remote_retrieve_body($response), true) ?? [];
-}
-
-// -------------------------------------------------------------------
-// Chargement du script produit
-// -------------------------------------------------------------------
-
-function synj_charger_scripts() {
-    // synj-auth.js chargé sur toutes les pages (dans <head>) — initialise window.__synj
-    wp_enqueue_script(
-        'synj-auth',
-        plugin_dir_url(__FILE__) . 'js/synj-auth.js',
-        [],
-        '1.0.3',
-        false // <head>, pas en footer
+    wp_add_inline_script(
+        'synj-prix',
+        'window.__SYNJ_API_KEY  = ' . json_encode(synj_get_api_key()) . ';' .
+        'window.__SYNJ_API_BASE = ' . json_encode(synj_get_api_url()) . ';' .
+        'window.__SYNJ_CART_ID  = ' . json_encode($cart_id) . ';',
+        'before'
     );
-    wp_localize_script('synj-auth', '__SYNJ_CONFIG', [
-        'apiBase' => SYNJ_API_URL,
+
+    wp_localize_script('synj-prix', '__SYNJ_PRODUCT', [
+        'type'           => get_post_meta($product_id, 'synj_product_type',   true),
+        'templateId'     => (int)   get_post_meta($product_id, 'synj_template_id',    true),
+        'basePrice'      => (float) get_post_meta($product_id, 'synj_base_price',     true),
+        'pricingConfig'  => json_decode(get_post_meta($product_id, 'synj_pricing_config',  true), true),
+        'resourceConfig' => json_decode(get_post_meta($product_id, 'synj_resource_config', true), true),
     ]);
-    // Injecte window.__SYNJ_API_BASE et window.__SYNJ_LOGGED_IN pour synj-auth.js
-    wp_add_inline_script('synj-auth', 'window.__SYNJ_API_BASE = ' . json_encode(SYNJ_API_URL) . '; window.__SYNJ_LOGGED_IN = ' . (is_user_logged_in() ? 'true' : 'false') . ';', 'before');
-
-    // synj-checkout.js chargé sur la page checkout custom
-    if (is_page('checkout-synj')) {
-        wp_enqueue_script(
-            'synj-checkout',
-            plugin_dir_url(__FILE__) . 'js/synj-checkout.js',
-            ['synj-auth'],
-            '1.0.0',
-            true
-        );
-    }
-
-    // synj-prix.js chargé uniquement sur les pages produit
-    if (is_product()) {
-        wp_enqueue_script(
-            'synj-prix',
-            plugin_dir_url(__FILE__) . 'js/synj-prix.js',
-            ['synj-auth'],
-            '1.0.3',
-            true
-        );
-        wp_localize_script('synj-prix', 'SYNJ_CONFIG', [
-            'apiBase' => SYNJ_API_URL,
-        ]);
-    }
-}
-add_action('wp_enqueue_scripts', 'synj_charger_scripts');
+});
 
 // -------------------------------------------------------------------
 // WooCommerce — configuration panier
 // -------------------------------------------------------------------
 
-function synj_sauvegarder_config($cart_item_data, $product_id) {
-    if (isset($_POST['synj_ram']))      $cart_item_data['synj_ram']      = floatval($_POST['synj_ram']);
-    if (isset($_POST['synj_cpu']))      $cart_item_data['synj_cpu']      = floatval($_POST['synj_cpu']);
-    if (isset($_POST['synj_stockage'])) $cart_item_data['synj_stockage'] = floatval($_POST['synj_stockage']);
-    if (isset($_POST['synj_prix']))     $cart_item_data['synj_prix']     = floatval($_POST['synj_prix']);
-    if (isset($_POST['synj_os']))       $cart_item_data['synj_os']       = sanitize_text_field($_POST['synj_os']);
+add_filter('woocommerce_add_cart_item_data', function ($cart_item_data, $product_id) {
+    if (isset($_POST['synj_cpu']))        $cart_item_data['synj_cpu']        = floatval($_POST['synj_cpu']);
+    if (isset($_POST['synj_ram_gb']))     $cart_item_data['synj_ram_gb']     = floatval($_POST['synj_ram_gb']);
+    if (isset($_POST['synj_storage_gb'])) $cart_item_data['synj_storage_gb'] = floatval($_POST['synj_storage_gb']);
+    if (isset($_POST['synj_prix']))       $cart_item_data['synj_prix']       = floatval($_POST['synj_prix']);
     return $cart_item_data;
-}
-add_filter('woocommerce_add_cart_item_data', 'synj_sauvegarder_config', 10, 2);
+}, 10, 2);
 
-function synj_appliquer_prix($cart) {
+add_action('woocommerce_before_calculate_totals', function ($cart) {
     if (is_admin() && !defined('DOING_AJAX')) return;
     foreach ($cart->get_cart() as $item) {
         if (isset($item['synj_prix']) && $item['synj_prix'] > 0) {
             $item['data']->set_price($item['synj_prix']);
         }
     }
-}
-add_action('woocommerce_before_calculate_totals', 'synj_appliquer_prix', 10, 1);
+});
 
-function synj_afficher_specs_panier($item_data, $cart_item) {
-    if (isset($cart_item['synj_ram'])      && $cart_item['synj_ram']      > 0)
-        $item_data[] = ['name' => 'RAM',      'value' => $cart_item['synj_ram']      . ' Go'];
-    if (isset($cart_item['synj_cpu'])      && $cart_item['synj_cpu']      > 0)
-        $item_data[] = ['name' => 'CPU',      'value' => $cart_item['synj_cpu']      . ' cœur(s)'];
-    if (isset($cart_item['synj_stockage']) && $cart_item['synj_stockage'] > 0)
-        $item_data[] = ['name' => 'Stockage', 'value' => $cart_item['synj_stockage'] . ' Go'];
-    if (isset($cart_item['synj_os'])       && !empty($cart_item['synj_os']))
-        $item_data[] = ['name' => 'OS',       'value' => $cart_item['synj_os']];
+add_filter('woocommerce_get_item_data', function ($item_data, $cart_item) {
+    if (!empty($cart_item['synj_cpu']))        $item_data[] = ['name' => 'CPU',      'value' => $cart_item['synj_cpu']        . ' cœur(s)'];
+    if (!empty($cart_item['synj_ram_gb']))     $item_data[] = ['name' => 'RAM',      'value' => $cart_item['synj_ram_gb']     . ' Go'];
+    if (!empty($cart_item['synj_storage_gb'])) $item_data[] = ['name' => 'Stockage', 'value' => $cart_item['synj_storage_gb'] . ' Go'];
     return $item_data;
-}
-add_filter('woocommerce_get_item_data', 'synj_afficher_specs_panier', 10, 2);
+}, 10, 2);
+
+// Copier les meta du panier vers les items de commande
+add_action('woocommerce_checkout_create_order_line_item', function ($item, $cart_item_key, $values, $order) {
+    foreach (['synj_cpu', 'synj_ram_gb', 'synj_storage_gb'] as $key) {
+        if (!empty($values[$key])) $item->add_meta_data($key, $values[$key], true);
+    }
+}, 10, 4);
+
+// -------------------------------------------------------------------
+// Provisioning après paiement confirmé
+// -------------------------------------------------------------------
+
+add_action('woocommerce_payment_complete', function (int $order_id): void {
+    $order = wc_get_order($order_id);
+    if (!$order) return;
+
+    foreach ($order->get_items() as $item) {
+        $product_id   = $item->get_product_id();
+        $template_id  = (int) get_post_meta($product_id, 'synj_template_id',  true);
+        $product_type =       get_post_meta($product_id, 'synj_product_type', true);
+
+        if (!$template_id || !$product_type) {
+            error_log('[SYNJ] Provisioning impossible — meta manquantes pour produit ' . $product_id);
+            continue;
+        }
+
+        $cpu        = (int) $item->get_meta('synj_cpu');
+        $ram_gb     = (int) $item->get_meta('synj_ram_gb');
+        $storage_gb = (int) $item->get_meta('synj_storage_gb');
+
+        if (!$cpu || !$ram_gb) {
+            error_log('[SYNJ] Provisioning impossible — ressources nulles pour commande WC-' . $order_id . ' (cpu=' . $cpu . ' ram_gb=' . $ram_gb . ')');
+            continue;
+        }
+
+        $cart_id = '';
+        if (function_exists('WC') && WC()->session) {
+            $cart_id = WC()->session->get_customer_id() ?? '';
+        }
+        if (!$cart_id) {
+            $cart_id = $order->get_meta('_customer_user') ? 'user-' . $order->get_meta('_customer_user') : 'wc-' . $order_id;
+        }
+
+        $payment_intent_id = $order->get_meta('_stripe_intent_id') ?: '';
+
+        $body = [
+            'email'           => $order->get_billing_email(),
+            'firstName'       => $order->get_billing_first_name(),
+            'productType'     => $product_type,
+            'templateId'      => $template_id,
+            'externalOrderId' => 'WC-' . $order_id,
+            'cartId'          => $cart_id,
+            'paymentIntentId' => $payment_intent_id,
+            'resources'       => [
+                'cpu'        => $cpu,
+                'ram_gb'     => $ram_gb,
+                'storage_gb' => $storage_gb,
+            ],
+        ];
+
+        error_log('[SYNJ] Appel /provision — body: ' . wp_json_encode($body));
+
+        $response = wp_remote_post(synj_get_api_url() . '/provision', [
+            'headers' => [
+                'Content-Type' => 'application/json',
+                'X-API-Key'    => synj_get_api_key(),
+            ],
+            'body'    => wp_json_encode($body),
+            'timeout' => 15,
+        ]);
+
+        if (!is_wp_error($response)) {
+            $http_code = wp_remote_retrieve_response_code($response);
+            $body_raw  = wp_remote_retrieve_body($response);
+            $data      = json_decode($body_raw, true);
+            error_log('[SYNJ] Réponse /provision — HTTP ' . $http_code . ' — ' . $body_raw);
+            if (!empty($data['serviceId'])) {
+                update_post_meta($order_id, 'synj_service_id', $data['serviceId']);
+                error_log('[SYNJ] Provisioning lancé — serviceId: ' . $data['serviceId'] . ' pour commande WC-' . $order_id);
+            }
+        } else {
+            error_log('[SYNJ] Provisioning wp_error : ' . $response->get_error_message());
+        }
+    }
+});
 
 // -------------------------------------------------------------------
 // Shortcode disponibilités
 // -------------------------------------------------------------------
 
-function synj_disponibilites_shortcode() {
+add_shortcode('synj_disponibilites', function () {
     ob_start();
     ?>
     <div id="synj-dispo" style="font-family:Arial; max-width:900px;">
@@ -334,47 +344,33 @@ function synj_disponibilites_shortcode() {
                 fetch('/wp-json/synj/v1/cpu').then(r => r.json()),
                 fetch('/wp-json/synj/v1/storage').then(r => r.json()),
             ]);
+            const ramPct = ((ram.free_memory / ram.total_memory) * 100).toFixed(1);
+            const ramColor = ramPct < 10 ? '#ef4444' : ramPct < 30 ? '#f59e0b' : '#22c55e';
+            document.getElementById('synj-ram-val').textContent = (ram.available_memory/1073741824).toFixed(2) + ' / ' + (ram.total_memory/1073741824).toFixed(2) + ' Go';
+            document.getElementById('synj-ram-bar').style.cssText = 'width:' + ramPct + '%;background:' + ramColor;
+            document.getElementById('synj-ram-pct').textContent = ramPct + '% libre';
+            document.getElementById('synj-ram-pct').style.color = ramColor;
 
-            const ramDispoGo = (ram.available_memory / 1073741824).toFixed(2);
-            const ramTotalGo = (ram.total_memory / 1073741824).toFixed(2);
-            const ramUsedGo  = (ram.used_memory / 1073741824).toFixed(2);
-            const ramPct     = ((ram.free_memory / ram.total_memory) * 100).toFixed(1);
-            const ramColor   = ramPct < 10 ? '#ef4444' : ramPct < 30 ? '#f59e0b' : '#22c55e';
-            document.getElementById('synj-ram-val').textContent = ramDispoGo + ' / ' + ramTotalGo + ' Go';
-            document.getElementById('synj-ram-bar').style.width      = ramPct + '%';
-            document.getElementById('synj-ram-bar').style.background  = ramColor;
-            document.getElementById('synj-ram-pct').textContent = ramPct + '% libre (' + ramUsedGo + ' Go utilisés)';
-            document.getElementById('synj-ram-pct').style.color  = ramColor;
-
-            const cpuUsage = (parseFloat(cpu.available_cpu) * 100).toFixed(1);
-            const cpuDispo = (100 - cpuUsage).toFixed(1);
+            const cpuDispo = (100 - parseFloat(cpu.available_cpu) * 100).toFixed(1);
             const cpuColor = cpuDispo < 15 ? '#ef4444' : cpuDispo < 40 ? '#f59e0b' : '#22c55e';
             document.getElementById('synj-cpu-val').textContent = cpuDispo + '%';
-            document.getElementById('synj-cpu-bar').style.width      = cpuDispo + '%';
-            document.getElementById('synj-cpu-bar').style.background  = cpuColor;
+            document.getElementById('synj-cpu-bar').style.cssText = 'width:' + cpuDispo + '%;background:' + cpuColor;
             document.getElementById('synj-cpu-pct').textContent = cpuDispo + '% disponible';
-            document.getElementById('synj-cpu-pct').style.color  = cpuColor;
+            document.getElementById('synj-cpu-pct').style.color = cpuColor;
 
-            const storDispoGo = (stockage.available_storage / 1073741824).toFixed(2);
-            const storTotalGo = (stockage.total_storage / 1073741824).toFixed(2);
-            const storPct     = ((stockage.available_storage / stockage.total_storage) * 100).toFixed(1);
-            const storColor   = storDispoGo < 20 ? '#ef4444' : storDispoGo < 50 ? '#f59e0b' : '#22c55e';
-            document.getElementById('synj-stockage-val').textContent = storDispoGo + ' / ' + storTotalGo + ' Go';
-            document.getElementById('synj-stockage-bar').style.width      = storPct + '%';
-            document.getElementById('synj-stockage-bar').style.background  = storColor;
+            const storPct = ((stockage.available_storage / stockage.total_storage) * 100).toFixed(1);
+            const storColor = storPct < 20 ? '#ef4444' : storPct < 50 ? '#f59e0b' : '#22c55e';
+            document.getElementById('synj-stockage-val').textContent = (stockage.available_storage/1073741824).toFixed(2) + ' / ' + (stockage.total_storage/1073741824).toFixed(2) + ' Go';
+            document.getElementById('synj-stockage-bar').style.cssText = 'width:' + storPct + '%;background:' + storColor;
             document.getElementById('synj-stockage-pct').textContent = storPct + '% disponible';
-            document.getElementById('synj-stockage-pct').style.color  = storColor;
+            document.getElementById('synj-stockage-pct').style.color = storColor;
 
-            document.getElementById('synj-last-update').textContent =
-                'Dernière mise à jour : ' + new Date().toLocaleTimeString('fr-FR');
-        } catch(err) {
-            console.error('Erreur API SYNJ:', err);
-        }
+            document.getElementById('synj-last-update').textContent = 'Dernière mise à jour : ' + new Date().toLocaleTimeString('fr-FR');
+        } catch(err) { console.error('Erreur SYNJ:', err); }
     }
     synj_fetchDispo();
     setInterval(synj_fetchDispo, 30000);
     </script>
     <?php
     return ob_get_clean();
-}
-add_shortcode('synj_disponibilites', 'synj_disponibilites_shortcode');
+});
