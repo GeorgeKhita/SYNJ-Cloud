@@ -7,6 +7,11 @@ const SYNJ_PRODUITS = {
         cpu:        { min: 1,  max: 8,   step: 1,  label: 'vCPU',        prix: 3.00 },
         ram_gb:     { min: 2,  max: 32,  step: 1,  label: 'RAM (Go)',     prix: 2.50 },
         storage_gb: { min: 20, max: 500, step: 20, label: 'Stockage (Go)',prix: 0.02 },
+        os: [
+            { value: 'ubuntu-server',  label: 'Ubuntu Server 24.04 LTS', available: true  },
+            { value: 'ubuntu-desktop', label: 'Ubuntu Desktop 24.04 LTS (bientôt)', available: false },
+            { value: 'windows-server', label: 'Windows Server 2025 (bientôt)',      available: false },
+        ],
     },
     'vpn': {
         type: 'vpn', label: 'VPN', base_price: 8,
@@ -148,11 +153,34 @@ async function synj_initProduit() {
         }
     } catch { /* backend injoignable → on laisse passer */ }
 
-    // Selects
+    // Selects ressources
     const recalculer = () => afficherPrix(calculerPrix(config));
     if (config.cpu)        zone.appendChild(creerSelect('synj-cpu',      config.cpu,        recalculer));
     if (config.ram_gb)     zone.appendChild(creerSelect('synj-ram',      config.ram_gb,     recalculer));
     if (config.storage_gb) zone.appendChild(creerSelect('synj-stockage', config.storage_gb, recalculer));
+
+    // Select OS pour VPS
+    if (config.os) {
+        const wrapper = document.createElement('div');
+        wrapper.style.cssText = 'margin: 12px 0;';
+        const lbl = document.createElement('label');
+        lbl.textContent = 'Système d\'exploitation';
+        lbl.style.cssText = 'display:block; font-weight:600; color:#1e3a5f; margin-bottom:6px; font-size:14px;';
+        const select = document.createElement('select');
+        select.id = 'synj-os';
+        select.style.cssText = 'width:280px; padding:8px 12px; border:2px solid #e5e7eb; border-radius:8px; font-size:14px; cursor:pointer;';
+        config.os.forEach(os => {
+            const opt = document.createElement('option');
+            opt.value    = os.value;
+            opt.textContent = os.label;
+            opt.disabled = !os.available;
+            if (!os.available) opt.style.color = '#9ca3af';
+            select.appendChild(opt);
+        });
+        wrapper.appendChild(lbl);
+        wrapper.appendChild(select);
+        zone.appendChild(wrapper);
+    }
 
     setupPanier(config);
     afficherPrix(calculerPrix(config));
@@ -200,9 +228,11 @@ function setupPanier(config) {
         } catch { /* backend injoignable → fail-open, on continue */ }
 
         // Injecter les champs cachés
-        ['synj_ram_gb', 'synj_cpu', 'synj_storage_gb', 'synj_prix', 'synj_type'].forEach(id => {
+        ['synj_ram_gb', 'synj_cpu', 'synj_storage_gb', 'synj_prix', 'synj_type', 'synj_os'].forEach(id => {
             document.getElementById(id)?.remove();
         });
+
+        const osValue = document.getElementById('synj-os')?.value || '';
 
         [
             { name: 'synj_cpu',        value: resources.cpu        },
@@ -210,6 +240,7 @@ function setupPanier(config) {
             { name: 'synj_storage_gb', value: resources.storage_gb },
             { name: 'synj_prix',       value: calculerPrix(config) },
             { name: 'synj_type',       value: config.type          },
+            { name: 'synj_os',         value: osValue              },
         ].forEach(({ name, value }) => {
             const input = document.createElement('input');
             input.type = 'hidden'; input.id = name; input.name = name; input.value = value;

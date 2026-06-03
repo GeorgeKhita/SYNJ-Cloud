@@ -199,6 +199,7 @@ add_filter('woocommerce_add_cart_item_data', function ($cart_item_data, $product
     if (isset($_POST['synj_ram_gb']))     $cart_item_data['synj_ram_gb']     = floatval($_POST['synj_ram_gb']);
     if (isset($_POST['synj_storage_gb'])) $cart_item_data['synj_storage_gb'] = floatval($_POST['synj_storage_gb']);
     if (isset($_POST['synj_prix']))       $cart_item_data['synj_prix']       = floatval($_POST['synj_prix']);
+    if (isset($_POST['synj_os']))         $cart_item_data['synj_os']         = sanitize_key($_POST['synj_os']);
     return $cart_item_data;
 }, 10, 2);
 
@@ -220,7 +221,7 @@ add_filter('woocommerce_get_item_data', function ($item_data, $cart_item) {
 
 // Copier les meta du panier vers les items de commande
 add_action('woocommerce_checkout_create_order_line_item', function ($item, $cart_item_key, $values, $order) {
-    foreach (['synj_cpu', 'synj_ram_gb', 'synj_storage_gb'] as $key) {
+    foreach (['synj_cpu', 'synj_ram_gb', 'synj_storage_gb', 'synj_os'] as $key) {
         if (!empty($values[$key])) $item->add_meta_data($key, $values[$key], true);
     }
 }, 10, 4);
@@ -269,10 +270,22 @@ function synj_lancer_provisioning(int $order_id): void {
         }
 
         $payment_intent_id = $order->get_meta('_stripe_intent_id') ?: '';
+        $os_slug           = $item->get_meta('synj_os') ?: '';
+
+        // Pour le VPS, le templateId dépend de l'OS choisi
+        if ($product_type === 'vps' && $os_slug) {
+            $vps_templates = [
+                'ubuntu-server'  => 901,
+                'ubuntu-desktop' => 902,
+                'windows-server' => 903,
+            ];
+            $template_id = $vps_templates[$os_slug] ?? $template_id;
+        }
 
         $body = [
             'email'           => $order->get_billing_email(),
             'firstName'       => $order->get_billing_first_name(),
+            'lastName'        => $order->get_billing_last_name(),
             'productType'     => $product_type,
             'templateId'      => $template_id,
             'externalOrderId' => 'WC-' . $order_id,
