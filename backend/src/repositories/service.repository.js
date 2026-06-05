@@ -45,6 +45,19 @@ export async function updateIp(serviceId, ip) {
   await pool.query('UPDATE services SET ip_address = ?, updated_at = NOW() WHERE id = ?', [encrypt(ip), serviceId]);
 }
 
+export async function updateVmId(serviceId, vmId) {
+  await pool.query('UPDATE services SET vm_id = ?, updated_at = NOW() WHERE id = ?', [vmId, serviceId]);
+}
+
+export async function countByEmailAndType(email, productType) {
+  const [rows] = await pool.query(
+    `SELECT COUNT(*) AS count FROM services
+     WHERE customer_email = ? AND product_type = ? AND status != 'deleted'`,
+    [email, productType]
+  );
+  return Number(rows[0].count);
+}
+
 export async function suspend(serviceId) {
   await pool.query(
     `UPDATE services SET status = 'suspended', suspended_at = NOW(),

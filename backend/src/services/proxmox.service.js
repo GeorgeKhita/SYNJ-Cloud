@@ -105,8 +105,27 @@ export async function getNextVmId() {
   return Number(await proxmoxRequest('GET', '/cluster/nextid'));
 }
 
-export async function cloneContainer(node, templateId, newVmId) {
-  return proxmoxRequest('POST', `/nodes/${node}/lxc/${templateId}/clone`, { newid: newVmId });
+export async function waitForTask(node, upid, { maxMs = 120_000, intervalMs = 3_000 } = {}) {
+  const deadline = Date.now() + maxMs;
+  while (Date.now() < deadline) {
+    const result = await proxmoxRequest('GET', `/nodes/${node}/tasks/${encodeURIComponent(upid)}/status`);
+    if (result?.status === 'stopped') {
+      if (result.exitstatus !== 'OK') throw new Error(`Tâche Proxmox échouée (${upid}): ${result.exitstatus}`);
+      return result;
+    }
+    await new Promise(r => setTimeout(r, intervalMs));
+  }
+  throw new Error(`Tâche Proxmox timeout après ${maxMs / 1000}s (${upid})`);
+}
+
+export async function getContainerInterfaces(node, vmId) {
+  return proxmoxRequest('GET', `/nodes/${node}/lxc/${vmId}/interfaces`);
+}
+
+export async function cloneContainer(node, templateId, newVmId, { hostname } = {}) {
+  const body = { newid: newVmId };
+  if (hostname) body.hostname = hostname;
+  return proxmoxRequest('POST', `/nodes/${node}/lxc/${templateId}/clone`, body);
 }
 
 export async function configureContainer(node, vmId, config) {

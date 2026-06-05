@@ -7,6 +7,9 @@ import logger           from '../utils/logger.js';
 const startSchema = z.object({
   email:           z.string().email(),
   firstName:       z.string().min(1),
+  lastName:        z.string().min(1).optional(),
+  // Regex : commence par une lettre minuscule, alphanum + tirets, 2-32 chars
+  desiredUsername: z.string().regex(/^[a-z][a-z0-9-]{1,31}$/).optional(),
   productType:     z.enum(['vps', 'vpn', 'nas']),
   templateId:      z.number().int().positive(),
   externalOrderId: z.string().min(1),
@@ -39,7 +42,7 @@ export async function start(req, res) {
     vmId:            0,       // mis à jour pendant le provisioning
     ip:              '',
     port:            body.productType === 'vps' ? '22' : '443',
-    username:        body.productType === 'nas' ? 'admin' : 'root',
+    username:        body.productType === 'nas' ? 'admin' : (body.desiredUsername ?? body.firstName.toLowerCase()),
     password:        '',
     ramGb:           body.resources.ram_gb,
     cpu:             body.resources.cpu,
