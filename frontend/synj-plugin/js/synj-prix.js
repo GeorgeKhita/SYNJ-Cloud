@@ -132,8 +132,11 @@ async function synj_initProduit() {
     }
 
     // Vérification disponibilité
-    const minResources = { cpu: config.cpu?.min ?? 1, ram_gb: config.ram_gb?.min ?? 1 };
-    if (config.storage_gb) minResources.storage_gb = config.storage_gb.min;
+    const minResources = {
+        cpu:        config.cpu?.min ?? 1,
+        ram_gb:     config.ram_gb?.min ?? 1,
+        storage_gb: config.storage_gb?.min ?? 0,
+    };
 
     try {
         const dispo = await fetch('/wp-json/synj/v1/availability/check', {
